@@ -47,6 +47,59 @@ document.addEventListener('click', (e) => {
   if (!mobileNav.hidden && !mobileNav.contains(e.target) && e.target !== menuBtn) setMenu(false);
 });
 
+// ---------------------------------------------------------------- Business Cards carousel
+// Scrolling through the section glides the cards past in 3D; the centred card comes forward and its
+// details show in the caption. Independent of the 3D world, so it also runs on the static fallback.
+(function setupCards() {
+  const sec = $('business-cards');
+  if (!sec) return;
+  const cards = [...sec.querySelectorAll('.bcard')], n = cards.length;
+  const dotsEl = $('cards-dots');
+  const span = () => Math.max(1, sec.offsetHeight - window.innerHeight);
+  // Map 6%–94% of the section onto the cards, so the first and last card hold for a moment
+  const toIndex = (p) => Math.min(n - 1, Math.max(0, ((p - 0.06) / 0.88) * (n - 1)));
+  const goTo = (i) => window.scrollTo({ top: sec.offsetTop + (0.06 + (i / (n - 1)) * 0.88) * span() + 2, behavior: reduceMotion ? 'auto' : 'smooth' });
+  const dots = cards.map((c, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-label', `Show card ${i + 1}: ${c.dataset.title}`);
+    b.addEventListener('click', () => goTo(i));
+    dotsEl.appendChild(b);
+    return b;
+  });
+  let cur = 0, last = -1, raf = 0, inView = false;
+  function draw() {
+    raf = 0;
+    const p = Math.min(1, Math.max(0, (window.scrollY - sec.offsetTop) / span()));
+    const target = toIndex(p);
+    cur = reduceMotion ? target : cur + (target - cur) * 0.2;
+    if (Math.abs(target - cur) < 0.001) cur = target;
+    cards.forEach((c, i) => {
+      const d = i - cur, ad = Math.abs(d);
+      c.style.setProperty('--d', d.toFixed(3));
+      c.style.setProperty('--ad', Math.min(3, ad).toFixed(3));
+      c.style.zIndex = String(100 - Math.round(ad * 10));
+      c.style.visibility = ad > 3.5 ? 'hidden' : 'visible';
+      c.classList.toggle('active', ad < 0.5);
+    });
+    const idx = Math.round(cur);
+    if (idx !== last) {
+      last = idx;
+      $('bc-count').textContent = `${String(idx + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}`;
+      $('bc-title').textContent = cards[idx].dataset.title;
+      $('bc-desc').textContent = cards[idx].dataset.desc;
+      dots.forEach((b, i) => { b.classList.toggle('active', i === idx); b.toggleAttribute('aria-current', i === idx); });
+    }
+    if (inView && cur !== target) raf = requestAnimationFrame(draw);
+  }
+  const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  new IntersectionObserver(([e]) => { inView = e.isIntersecting; if (inView) kick(); }).observe(sec);
+  window.addEventListener('scroll', () => { if (inView) kick(); }, { passive: true });
+  window.addEventListener('resize', kick);
+  draw();
+  window.__pcCards = () => ({ index: last, position: +cur.toFixed(3), count: n });
+})();
+
 // ---------------------------------------------------------------- assets
 async function loadLogo() {
   const img = new Image();

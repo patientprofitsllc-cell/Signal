@@ -23,7 +23,8 @@ const js = outputFiles[0].text
   .replaceAll('</script', '<\\/script');
 
 const css = read('styles.css').toString()
-  .replace(/url\((fonts\/[^)]+\.woff2)\)/g, (_, f) => `url(${dataUri(f, 'font/woff2')})`);
+  .replace(/url\((fonts\/[^)]+\.woff2)\)/g, (_, f) => `url(${dataUri(f, 'font/woff2')})`)
+  .replaceAll('assets/logo-mark.webp', logo);
 
 const html = read('index.html').toString();
 const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'))

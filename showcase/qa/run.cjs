@@ -95,6 +95,29 @@ async function checkViewport(browser, base, vp, opts = {}) {
     if (!opts.dark && !opts.reduced) await p.screenshot({ path: path.join(OUT, `${vp.name}-ch${i + 1}.png`) });
   }
 
+  // Business Cards: scrolling the section moves through the designs; the centred card is fully on screen
+  const bc = await p.evaluate(async () => {
+    const s = document.getElementById('business-cards');
+    if (!s) return null;
+    const seen = new Set();
+    for (const f of [0.06, 0.5, 0.94]) {
+      window.scrollTo(0, s.offsetTop + f * (s.offsetHeight - innerHeight));
+      await new Promise((r) => setTimeout(r, 2500));
+      seen.add(document.getElementById('bc-title').textContent);
+    }
+    const a = document.querySelector('.bcard.active')?.getBoundingClientRect();
+    return { seen: [...seen], cards: document.querySelectorAll('.bcard').length, activeOnScreen: !!a && a.left >= 0 && a.right <= innerWidth && a.top >= 0 && a.bottom <= innerHeight, overflowX: document.documentElement.scrollWidth - innerWidth };
+  });
+  if (!bc) fail(label, 'business cards section', 'missing');
+  else {
+    bc.cards === 8 ? pass(label, 'business cards: 8 designs') : fail(label, 'business cards: 8 designs', String(bc.cards));
+    bc.seen.length >= 3 ? pass(label, 'business cards: scrolling changes the card', bc.seen.join(' → ')) : fail(label, 'business cards: scrolling changes the card', bc.seen.join(' → '));
+    bc.activeOnScreen ? pass(label, 'business cards: centred card fully on screen') : fail(label, 'business cards: centred card fully on screen', JSON.stringify(bc));
+    bc.overflowX <= 0 ? pass(label, 'business cards: no horizontal scroll') : fail(label, 'business cards: no horizontal scroll', `${bc.overflowX}px`);
+  }
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.waitForTimeout(800);
+
   // Hotspot tooltip opens on click and stays inside the viewport
   const tip = await p.evaluate(async () => {
     const h = [...document.querySelectorAll('.hs')].find((e) => +getComputedStyle(e).opacity > 0.5);
