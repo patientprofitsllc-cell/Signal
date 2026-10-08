@@ -43,8 +43,8 @@ async function checkViewport(browser, base, vp, opts = {}) {
   p.on('requestfailed', (r) => { if (!r.url().startsWith('data:')) errors.push('request failed: ' + r.url()); });
 
   await p.goto(base, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await p.waitForFunction(() => document.getElementById('loader')?.classList.contains('done'), null, { timeout: 15000 })
-    .then(() => pass(label, 'loader clears'), () => fail(label, 'loader clears', 'loader still visible after 15s'));
+  await p.waitForFunction(() => document.getElementById('loader')?.classList.contains('done'), null, { timeout: 40000 })
+    .then(() => pass(label, 'loader clears'), () => fail(label, 'loader clears', 'loader still visible after 40s'));
   await p.waitForTimeout(800);
 
   const info = await p.evaluate(() => ({

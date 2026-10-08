@@ -149,18 +149,24 @@ if (!world) {
   // Render at the screen's full sharpness, capped at a 4K pixel budget (3840×2160). If frames run slow,
   // step the resolution down; when there is headroom again, step back up.
   const PIXEL_BUDGET = 3840 * 2160;
-  const maxRatio = () => Math.max(1, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(PIXEL_BUDGET / (W * H))));
-  const minRatio = lowPower ? 0.75 : 1;
-  let ratio = maxRatio(), frameMs = 16, lastFrameAt = 0, lastAdjust = 0;
+  const dpr = () => window.devicePixelRatio || 1;
+  const maxRatio = () => Math.max(1, Math.min(dpr(), 3, Math.sqrt(PIXEL_BUDGET / (W * H))));
+  // Never drop below a crisp floor: at least 1×, and at least ~70% of the screen's own sharpness
+  const minRatio = () => Math.min(maxRatio(), Math.max(1, dpr() * 0.7));
+  let ratio = maxRatio(), frameMs = 16, lastFrameAt = 0, lastAdjust = 0, slowWindows = 0, fastWindows = 0;
+  const startedAt = performance.now();
   world.setPixelRatio(ratio);
-  window.addEventListener('resize', () => { ratio = Math.min(ratio, maxRatio()); world.setPixelRatio(ratio); });
+  window.addEventListener('resize', () => { ratio = Math.min(Math.max(ratio, minRatio()), maxRatio()); world.setPixelRatio(ratio); });
   function govern(now) {
     if (lastFrameAt) frameMs = frameMs * 0.92 + Math.min(100, now - lastFrameAt) * 0.08;
     lastFrameAt = now;
-    if (now - lastAdjust < 1200) return;
+    if (now - startedAt < 3000 || now - lastAdjust < 1000) return; // ignore start-up (shader compile) hitches
     lastAdjust = now;
-    if (frameMs > 24 && ratio > minRatio) ratio = Math.max(minRatio, ratio * 0.85);
-    else if (frameMs < 13 && ratio < maxRatio()) ratio = Math.min(maxRatio(), ratio * 1.12);
+    slowWindows = frameMs > 26 ? slowWindows + 1 : 0;
+    fastWindows = frameMs < 14 ? fastWindows + 1 : 0;
+    // Step down only after ~3 s of sustained slowness; step back up after ~2 s of headroom
+    if (slowWindows >= 3 && ratio > minRatio()) { ratio = Math.max(minRatio(), ratio * 0.88); slowWindows = 0; }
+    else if (fastWindows >= 2 && ratio < maxRatio()) { ratio = Math.min(maxRatio(), ratio * 1.12); fastWindows = 0; }
     else return;
     world.setPixelRatio(ratio);
   }
@@ -246,7 +252,11 @@ if (!world) {
   } else {
     const t0 = performance.now();
     let visible = true;
-    new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(worldEl);
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      // Scrolled past the 3D section (e.g. via a link): leave it in its finished, faded state
+      if (!visible && window.scrollY > worldEl.offsetTop) { fadeEl.style.opacity = 1; card.style.opacity = 0; card.style.visibility = 'hidden'; }
+    }).observe(worldEl);
     const loop = (now) => {
       requestAnimationFrame(loop); // schedule first so one bad frame can't stop the animation
       try {

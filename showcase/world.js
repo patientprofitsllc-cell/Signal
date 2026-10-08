@@ -346,7 +346,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const caps = renderer.capabilities;
   MAX_ANISO = caps.getMaxAnisotropy();
-  TEX_SCALE = lowPower ? 1.5 : 2;
+  TEX_SCALE = 2; // crisp signs and screens on every device
   const SHADOW_SIZE = !lowPower && caps.maxTextureSize >= 8192 ? 4096 : 2048;
 
   const scene = new THREE.Scene();
@@ -389,6 +389,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
 
   const CENTERS = [0, 1, 2, 3, 4, 5].map((i) => new THREE.Vector3(i * 85, 0, -i * 32));
   const keepOut = []; // circles trees should avoid: [x, z, r]
+  const noTrees = []; // world rectangles trees must stay out of: [x0, x1, z0, z1] (roads, buildings, plazas)
 
   const wordmark = wordmarkTexture(logo, true);
 
@@ -463,17 +464,39 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     parent.add(g);
     return g;
   }
-  // Traffic in both lanes of a straight road (local x axis), looping out of view
-  function traffic(parent, roadZ, len, n, speed) {
+  // Shared street state: a pedestrian walk signal every 14 s, and how brightly each shop's card is being tapped
+  const SIGNAL = { period: 14, walkFrom: 8.6, walkTo: 13.4 };
+  const carsHold = (t) => { const c = ((t % SIGNAL.period) + SIGNAL.period) % SIGNAL.period; return c > SIGNAL.walkFrom - 1.5 && c < SIGNAL.walkTo; };
+  const tapPulse = [0, 0, 0];
+  // Traffic in both lanes: cars keep their distance and stop at the line while people cross
+  function traffic(parent, roadZ, len, n, vmax, crossX) {
+    const cars = [];
     for (let i = 0; i < n; i++) {
-      const dir = i % 2 ? 1 : -1, c = car(parent);
-      c.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      const lane = roadZ + (dir > 0 ? 1.75 : -1.75), off = (i / n) * len;
-      updaters.push((t) => {
-        const x = (((t * speed + off) % len) + len) % len - len / 2; // same speed per lane, so cars never overlap
-        c.position.set(dir * x, 0.06, lane);
-      });
+      const dir = i % 2 ? 1 : -1, mesh = car(parent);
+      mesh.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      cars.push({ mesh, dir, lane: roadZ + (dir > 0 ? 1.75 : -1.75), x: -len / 2 + ((i + 0.5) / n) * len, v: vmax });
     }
+    let lastT = null;
+    updaters.push((t) => {
+      let dt = lastT === null ? 1 / 60 : t - lastT; lastT = t;
+      if (dt <= 0 || dt > 0.25) dt = 1 / 30; // time jumped (seek or capture)
+      const hold = carsHold(t);
+      for (const c of cars) {
+        let target = vmax;
+        const toLine = ((crossX - c.dir * 3.4) - c.x) * c.dir; // distance to the stop line ahead
+        if (hold && toLine > -0.3 && toLine < 22) target = Math.min(target, Math.sqrt(Math.max(0, toLine) * 2 * 3.2));
+        for (const o of cars) {
+          if (o === c || o.dir !== c.dir) continue;
+          let gap = (o.x - c.x) * c.dir; if (gap < 0) gap += len;
+          if (gap < 11) target = Math.min(target, Math.max(0, (gap - 6.5) * 1.3));
+        }
+        c.v += Math.max(-7 * dt, Math.min(2.6 * dt, target - c.v));
+        c.x += c.dir * c.v * dt;
+        if (c.x > len / 2) c.x -= len; else if (c.x < -len / 2) c.x += len;
+        c.mesh.position.set(c.x, 0.06, c.lane);
+        c.mesh.visible = Math.abs(c.x) < len / 2 - 3;
+      }
+    });
   }
 
   // ---- soft contact shadows (cheap ambient occlusion where things meet the ground)
@@ -507,6 +530,8 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   const metal = mat('#b9bcbb', { rough: 0.35, metal: 0.8 });
   function road(parent, x, z, len, w, ry = 0, { sidewalk = 2.6, lamps = true, crossings = [] } = {}) {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry;
+    const half = w / 2 + 0.3 + sidewalk + 1.2;
+    noTrees.push([parent.position.x + x - len / 2, parent.position.x + x + len / 2, parent.position.z + z - half, parent.position.z + z + half]);
     const at = asphalt.clone(); at.repeat.set(len / 14, 1); at.needsUpdate = true;
     const surf = new THREE.Mesh(new THREE.PlaneGeometry(len, w).rotateX(-Math.PI / 2), mat('#ffffff', { map: at, rough: 0.92 }));
     surf.position.y = 0.06; surf.receiveShadow = true; g.add(surf);
@@ -517,6 +542,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
         box(g, len, 0.17, sidewalk, '', 0, 0, sd * (w / 2 + 0.3 + sidewalk / 2), { material: mat('#ffffff', { map: pt, rough: 0.85 }), cast: false });
       }
       if (lamps) for (let i = -len / 2 + 7; i < len / 2 - 4; i += 16) {
+        if (crossings.some((cx) => Math.abs(cx - i) < 3)) continue; // keep crosswalk kerbs clear
         const lz = sd * (w / 2 + 0.6);
         cyl(g, 0.07, 0.1, 4.6, '', i, 0.17, lz, { material: metal, seg: 10 });
         const arm = box(g, 0.12, 0.1, 1.3, '', i, 4.65, lz - sd * 0.6, { material: metal });
@@ -565,7 +591,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   // ------------------------------------------------ 01 · The studio (Emons dock scene)
   {
     const g = new THREE.Group(); g.position.copy(CENTERS[0]); scene.add(g); cur = CENTERS[0];
-    road(g, 0, 15.8, 150, 7, 0, { sidewalk: 2.2, crossings: [-20, 30] });
+    road(g, 0, 15.8, 150, 7, 0, { sidewalk: 2.2 });
     box(g, 44, 0.04, 10, C.pad, 2, 0, 6.5, { cast: false });
     box(g, 30, 8, 14, C.white, 2, 0, -6);
     box(g, 5, 8.6, 14.4, C.sand, 19.5, 0, -6);
@@ -595,7 +621,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     box(g, 11.1, 1.8, 11.1, C.glass, -21, 2.4, -4, { cast: false });
     box(g, 11.1, 1.0, 11.1, C.glass, -21, 5.0, -4, { cast: false });
     // Pallets
-    for (let i = 0; i < 7; i++) box(g, 1.2, 0.9 + (i % 3) * 0.5, 1.2, '#d8c39e', -14 + i * 1.6, 0, 3.2 + (i % 2));
+    for (let i = 0; i < 7; i++) box(g, 1.15, 0.8 + (i % 3) * 0.4, 1.15, '#d8c39e', -15.8 + (i % 3) * 1.25, 0.04, 2.3 + Math.floor(i / 3) * 1.3);
     // Parked vans backed into the docks
     [-10, -5.4, -0.8, 8.4].forEach((x) => van(g, x, 6.4, 0));
     // Moving vans on the road
@@ -698,14 +724,34 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     roadMesh.receiveShadow = true;
     g.add(roadMesh);
     // Car travelling the road
+    // The car drives the process road and stops at each numbered step. Heading comes from the road's
+    // tangent (in this group's own coordinates) and pitch from the slope, so it follows the hill.
     const hatch = car(g);
-    const up = new THREE.Vector3();
+    hatch.rotation.order = 'YXZ';
+    const ROAD_LEN = curve.getLength(), CAR_SPEED = 7, DWELL = 1.4, STEP_U = [0.14, 0.38, 0.62, 0.86];
+    const legs = []; // alternating drive/stop segments along the road
+    let prev = 0;
+    for (const su of STEP_U) { legs.push({ from: prev, to: su * ROAD_LEN }); legs.push({ stop: su * ROAD_LEN }); prev = su * ROAD_LEN; }
+    legs.push({ from: prev, to: ROAD_LEN * 0.995 });
+    legs.forEach((l) => { l.dur = l.stop !== undefined ? DWELL : (l.to - l.from) / CAR_SPEED; });
+    const LOOP = legs.reduce((a, l) => a + l.dur, 0);
+    const distAt = (t) => {
+      let r = ((t % LOOP) + LOOP) % LOOP;
+      for (const l of legs) {
+        if (r <= l.dur) return l.stop !== undefined ? l.stop : l.from + (l.to - l.from) * smooth(r / l.dur) * 0.15 + (l.to - l.from) * (r / l.dur) * 0.85;
+        r -= l.dur;
+      }
+      return 0;
+    };
+    const ahead = new THREE.Vector3(), behind = new THREE.Vector3();
     updaters.push((t) => {
-      const u = Math.min(0.999, Math.max(0, (t * 0.03) % 1));
+      const d = distAt(t);
+      const u = Math.min(0.999, Math.max(0, d / ROAD_LEN));
       const p = curve.getPointAt(u), tg = curve.getTangentAt(u);
+      ahead.copy(p).addScaledVector(tg, 1.6); behind.copy(p).addScaledVector(tg, -1.6);
+      const pitch = Math.atan2(height(ahead.x, ahead.z) - height(behind.x, behind.z), 3.2);
       hatch.position.set(p.x, height(p.x, p.z) + 0.3, p.z);
-      up.set(p.x + tg.x, 0, p.z + tg.z);
-      hatch.lookAt(up.x, hatch.position.y, up.z);
+      hatch.rotation.set(-pitch, Math.atan2(tg.x, tg.z), 0);
     });
     // Process milestones
     const steps = [
@@ -745,7 +791,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     // Boat
     const boat = new THREE.Group(); boat.position.set(-4, 0, -20); g.add(boat);
     box(boat, 1.8, 0.7, 4.6, C.white, 0, 0, 0); box(boat, 1.82, 0.2, 4.62, C.sand, 0, 0.5, 0); box(boat, 1.2, 0.8, 1.4, C.white, 0, 0.7, -0.4);
-    updaters.push((t) => { boat.position.y = Math.sin(t * 1.6) * 0.08; boat.rotation.z = Math.sin(t * 1.3) * 0.03; boat.position.x = -4 + Math.sin(t * 0.25) * 5; });
+    updaters.push((t) => { boat.position.y = Math.sin(t * 1.6) * 0.08; boat.rotation.z = Math.sin(t * 1.3) * 0.03; boat.position.x = -7 + Math.sin(t * 0.25) * 3.5; });
     // Soundstages
     function stage(x, z, n) {
       box(g, 15, 5, 10, C.white, x, 0, z);
@@ -773,6 +819,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     box(arm, 9, 0.35, 0.35, C.sand, 2.5, 0, 0);
     box(arm, 1.4, 0.9, 0.9, C.ink, 7.2, -0.9, 0);
     updaters.push((t) => { arm.rotation.y = 0.6 + Math.sin(t * 0.4) * 0.7; arm.rotation.z = Math.sin(t * 0.55) * 0.12; });
+    for (let i = 0; i < 4; i++) box(g, 1.0, 0.7 + (i % 2) * 0.3, 0.8, '', 8.4 + (i % 2) * 1.1, 0, 21 + Math.floor(i / 2) * 0.9, { material: mat('#2c2d27', { rough: 0.6 }) }); // camera and light cases
     // Drones (the planes from the original)
     const rotorGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.05, 12);
     for (let i = 0; i < 4; i++) {
@@ -871,8 +918,8 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   {
     const base = CENTERS[5]; cur = base;
     const g = new THREE.Group(); g.position.copy(base); scene.add(g);
-    road(g, 0, 12, 100, 7, 0, { sidewalk: 3, crossings: [-19.5, 6] });
-    traffic(g, 12, 100, 4, 7);
+    road(g, 0, 12, 100, 7, 0, { sidewalk: 3, crossings: [6] });
+    traffic(g, 12, 100, 4, 7, 6);
     const shops = [
       { x: -26, label: 'THE CUT', bg: '#1a1a16', fg: '#dbb77e', body: C.white, card: ['Tap to review', 'Google reviews, one tap'] },
       { x: -13, label: 'AT THE TABLE', bg: '#dbb77e', fg: '#1a1a16', body: '#f3ebdc', card: ['Tap for our menu', 'Menu, hours & location'] },
@@ -888,13 +935,18 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       const card = new THREE.Group(); g.add(card);
       box(card, 3.6, 2.16, 0.08, C.ink, 0, -1.08, 0);
       plane(card, 3.6, 2.16, mat('#ffffff', { basic: true, map: cardTexture(s.card[0], s.card[1], logo) }), 0, 0, 0.05);
-      const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.35, 40), mat(C.sand, { basic: true, side: THREE.DoubleSide }));
-      glow.rotation.x = -Math.PI / 2; glow.position.set(s.x, 5.85, 1); g.add(glow);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.35, 40), mat(C.sand, { basic: true, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(s.x, 5.85, 1); g.add(ring);
+      const cardGlow = glow(g, s.x, 9.4, 1.4, 6, '#ffd994', 0.0);
+      cardGlow.material = cardGlow.material.clone();
       updaters.push((t) => {
-        card.position.set(s.x, 9.4 + Math.sin(t * 1.3 + i) * 0.35, 1.5);
-        card.rotation.y = -0.45 + Math.sin(t * 0.7 + i) * 0.25;
-        const k = 1 + ((t * 0.8 + i * 0.33) % 1) * 0.8;
-        glow.scale.set(k, k, k);
+        const tap = tapPulse[i]; tapPulse[i] *= 0.9; // set by shoppers tapping their phones below
+        card.position.set(s.x, 9.4 + Math.sin(t * 1.3 + i) * 0.35 + tap * 0.4, 1.5);
+        card.rotation.y = -0.45 + Math.sin(t * 0.7 + i) * 0.25 * (1 - tap);
+        card.scale.setScalar(1 + tap * 0.18);
+        cardGlow.position.copy(card.position); cardGlow.material.opacity = 0.08 + tap * 0.55;
+        const k = 1 + ((t * 0.8 + i * 0.33) % 1) * 0.8 + tap * 0.6;
+        ring.scale.set(k, k, k);
       });
     });
     // Barber pole
@@ -904,7 +956,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     updaters.push((t) => { poleTex.offset.y = -t * 0.5; });
     // Restaurant awning + tables
     const awning = box(g, 8, 0.25, 2.4, C.sand, -13, 3.3, 6); awning.rotation.x = 0.25;
-    for (const tx of [-16, -11]) { cyl(g, 0.7, 0.7, 0.9, C.white, tx, 0.17, 7.2); cyl(g, 0.06, 0.06, 2.2, C.ink, tx, 1.07, 7.2); const u = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.7, 16), mat(C.offwhite)); u.position.set(tx, 3.47, 7.2); u.castShadow = true; g.add(u); }
+    for (const tx of [-16, -13]) { cyl(g, 0.6, 0.6, 0.9, C.white, tx, 0.17, 7.55); cyl(g, 0.06, 0.06, 2.2, C.ink, tx, 1.07, 7.55); const u = new THREE.Mesh(new THREE.ConeGeometry(1.3, 0.7, 16), mat(C.offwhite)); u.position.set(tx, 3.47, 7.55); u.castShadow = true; g.add(u); }
     // Patient Creations tower
     const win = windowsTexture(6, 12);
     // Glass curtain wall: reflects the sky, with warm light from inside
@@ -933,8 +985,9 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     sign(g, 11, 2.75, wordmark, 22, 30.4, -1.2);
     // Plaza + park
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(6, 40), mat('#e6e2d6'));
-    plaza.rotation.x = -Math.PI / 2; plaza.position.set(36, 0.03, 8); plaza.receiveShadow = true; g.add(plaza);
-    cyl(g, 1.2, 1.4, 1.0, C.sand, 36, 0, 8);
+    plaza.rotation.x = -Math.PI / 2; plaza.position.set(40, 0.03, -1); plaza.receiveShadow = true; g.add(plaza);
+    cyl(g, 1.2, 1.4, 1.0, C.sand, 40, 0, -1);
+    noTrees.push([base.x + 33, base.x + 47, base.z - 8, base.z + 6]);
     treeField(44, -6, 6, 12, 18); treeField(-40, -6, 6, 12, 16); treeField(-6, -16, 26, 4, 22); treeField(0, 22, 46, 5, 24);
     keepOut.push([base.x, base.z, 36]);
     hs(5, -26, 12.5, 1.5, 'Smart Business Cards', 'Tap-to-share cards: reviews, menus, socials, WiFi.');
@@ -980,25 +1033,27 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       cyan: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.75, 1.9, 2.3), toneMapped: false, side: THREE.DoubleSide }),
     };
     const M4 = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
-    const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 6, 14);
-    const sph = (r, ts = Math.PI) => new THREE.SphereGeometry(r, 20, 14, 0, Math.PI * 2, 0, ts);
-    const chestGeo = new THREE.CylinderGeometry(0.25, 0.165, 0.42, 18); // broad shoulders, narrow waist
-    const visorGeo = new THREE.CylinderGeometry(0.121, 0.121, 0.042, 24, 1, true, -1.15, 2.3);
-    const ringGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16, 1, true);
+    // Figures are ~20 px tall even at 4K, so they use light geometry (the whole crowd stays well under 100k triangles)
+    const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 2, 8);
+    const sph = (r, ts = Math.PI) => new THREE.SphereGeometry(r, 10, 7, 0, Math.PI * 2, 0, ts);
+    const lowBox = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 1, r);
+    const chestGeo = new THREE.CylinderGeometry(0.25, 0.165, 0.42, 10); // broad shoulders, narrow waist
+    const visorGeo = new THREE.CylinderGeometry(0.121, 0.121, 0.042, 10, 1, true, -1.15, 2.3);
+    const ringGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.05, 8, 1, true);
     const accentBar = new THREE.BoxGeometry(1, 1, 1);
     // [joint, geometry, material ('accent' = gold or cyan per person), local matrix]
     const PARTS = [
-      ['body', rounded(0.34, 0.2, 0.22, 0.07), 'suit', M4(0, 0.02, 0)],
+      ['body', lowBox(0.34, 0.2, 0.22, 0.07), 'suit', M4(0, 0.02, 0)],
       ['body', cap(0.14, 0.14), 'suit', M4(0, 0.24, 0)],
       ['body', chestGeo, 'suit', M4(0, 0.5, 0, 0, 0, 0, 1, 1, 0.62)],
-      ['body', rounded(0.36, 0.26, 0.08, 0.035), 'armor', M4(0, 0.53, 0.11)],
+      ['body', lowBox(0.36, 0.26, 0.08, 0.035), 'armor', M4(0, 0.53, 0.11)],
       ['body', accentBar, 'accent', M4(0, 0.47, 0.152, 0, 0, 0, 0.3, 0.018, 0.012)],
       ['body', accentBar, 'accent', M4(0, 0.3, 0.13, 0, 0, 0, 0.018, 0.2, 0.012)],
-      ['body', new THREE.CylinderGeometry(0.055, 0.06, 0.1, 12), 'skin', M4(0, 0.76, 0)],
+      ['body', new THREE.CylinderGeometry(0.055, 0.06, 0.1, 6), 'skin', M4(0, 0.76, 0)],
       ['body', sph(0.115), 'skin', M4(0, 0.88, 0.01, 0, 0, 0, 0.92, 1.08, 1)],
       ['body', sph(0.124, Math.PI * 0.55), 'hair', M4(0, 0.9, -0.012, -0.3, 0, 0, 0.94, 1.05, 1.02)],
       ['body', visorGeo, 'accent', M4(0, 0.893, 0.012)],
-      ['body', rounded(0.3, 0.36, 0.13, 0.04), 'armor', M4(0, 0.5, -0.17)],
+      ['body', lowBox(0.3, 0.36, 0.13, 0.04), 'armor', M4(0, 0.5, -0.17)],
       ['body', accentBar, 'accent', M4(0.08, 0.5, -0.237, 0, 0, 0, 0.02, 0.26, 0.012)],
       ['body', accentBar, 'accent', M4(-0.08, 0.5, -0.237, 0, 0, 0, 0.02, 0.26, 0.012)],
       ['body', sph(0.118, Math.PI / 2), 'armor', M4(0.28, 0.68, 0, 0, 0, -0.35)],
@@ -1011,7 +1066,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
         ['leg' + k, cap(0.085, 0.3), 'suit', M4(0, -0.22, 0)],
         ['knee' + k, sph(0.07), 'armor', M4(0, 0, 0.045, 0, 0, 0, 1, 1.2, 0.8)],
         ['knee' + k, cap(0.07, 0.3), 'suit', M4(0, -0.21, 0)],
-        ['knee' + k, rounded(0.12, 0.11, 0.27, 0.04), 'armor', M4(0, -0.47, 0.04)],
+        ['knee' + k, lowBox(0.12, 0.11, 0.27, 0.04), 'armor', M4(0, -0.47, 0.04)],
         ['knee' + k, accentBar, 'accent', M4(0, -0.52, 0.04, 0, 0, 0, 0.125, 0.018, 0.275)],
       ]),
       ['root', flatPlane, 'shadow', M4(0, 0.03, 0, 0, 0, 0, 0.95, 1, 0.95)],
@@ -1047,44 +1102,168 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       j.body.rotation.y = s * 0.07 * swing;
     }
     const STRIDE = 1.6; // metres per full gait cycle
-    function walker(points, speed, offset, k, baseY = 0) {
-      const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.2);
-      const p = person(k, baseY);
-      const len = curve.getLength();
-      updaters.push((t) => {
-        const dist = t * speed + offset * len;
-        const u = Math.min(0.999, Math.max(0, ((dist / len) % 1 + 1) % 1));
-        const pt = curve.getPointAt(u), tg = curve.getTangentAt(u);
-        p.g.position.set(pt.x, baseY, pt.z);
-        p.g.rotation.y = Math.atan2(tg.x, tg.z);
-        pose(p, (dist / STRIDE) * Math.PI * 2, 1);
-      });
-    }
-    // Small groups standing and talking
-    function idle(x, z, face, k, baseY = 0) {
-      const p = person(k, baseY);
-      p.g.position.set(x, baseY, z); p.g.rotation.y = face;
-      updaters.push((t) => {
-        pose(p, 0, 0);
-        const talk = Math.max(0, Math.sin(t * 1.3 + k * 2));
-        p.joints.armR.rotation.x = -0.45 - talk * 0.5;
-        p.joints.elbowR.rotation.x = -0.9 - talk * 0.4;
-        p.body.rotation.y = Math.sin(t * 0.7 + k) * 0.12;
-      });
-    }
-    const chat = (i, x, z, n, k0, baseY = 0) => { for (let j = 0; j < n; j++) { const a = (j / n) * Math.PI * 2; idle(CENTERS[i].x + x + Math.cos(a) * 0.8, CENTERS[i].z + z + Math.sin(a) * 0.8, Math.atan2(-Math.cos(a), -Math.sin(a)), k0 + j, baseY); } }; // each faces the group's centre
-    chat(0, 6, 4.5, 2, 40, 0.04); chat(0, -18, 5, 3, 43, 0.04); chat(3, -14, 17, 2, 46); chat(5, -20, 6.6, 2, 48, 0.17); chat(5, 8, 6.8, 3, 50, 0.17); chat(4, -8, 3.6, 2, 53);
-    const loops = [
-      [[at(0, -15, 3.5), at(0, 14, 3.5), at(0, 14, 9.5), at(0, -15, 9.5)], 4],
-      [[at(1, -16, -9.5), at(1, 16, -9.5), at(1, 16, 11), at(1, -16, 11)], 3],
-      [[at(3, -26, 15), at(3, 8, 17), at(3, 12, 22), at(3, -24, 21)], 3],
-      [[at(4, -30, 3), at(4, 10, 3), at(4, 10, 4.5), at(4, -30, 4.5)], 2],
-      [[at(5, -38, 6.2), at(5, 30, 6.2), at(5, 30, 7.8), at(5, -38, 7.8)], 6],
-    ];
-    let k = 0;
-    const loopY = [0.04, 0, 0, 0, 0.17];
-    loops.forEach(([pts, n], li) => { for (let i = 0; i < n; i++, k++) walker(pts, 1.3 + (k % 3) * 0.25, i / n + R() * 0.1, k, loopY[li]); });
+    const W = (i, x, z) => [CENTERS[i].x + x, CENTERS[i].z + z]; // scene-local to world
 
+    // ---- actions: poses layered on top of walking/standing
+    function act(p, name, t, k) {
+      const j = p.joints, w = Math.sin(t * 6 + k);
+      if (name === 'carry') { j.armL.rotation.x = j.armR.rotation.x = -0.95; j.elbowL.rotation.x = j.elbowR.rotation.x = -0.55; j.armL.rotation.z = 0.12; j.armR.rotation.z = -0.12; }
+      else if (name === 'lift') { j.body.rotation.x = 0.38; j.armL.rotation.x = j.armR.rotation.x = -0.75; j.elbowL.rotation.x = j.elbowR.rotation.x = -0.3; }
+      else if (name === 'tap') { j.armR.rotation.x = -1.15; j.elbowR.rotation.x = -0.55 + w * 0.04; j.armR.rotation.z = -0.1; }
+      else if (name === 'point') { j.armR.rotation.x = -1.4 + w * 0.05; j.armR.rotation.z = -0.25; j.elbowR.rotation.x = -0.1; j.body.rotation.y = Math.sin(t * 0.6 + k) * 0.35; }
+      else if (name === 'film') { j.armL.rotation.x = j.armR.rotation.x = -1.05; j.elbowL.rotation.x = j.elbowR.rotation.x = -1.15; j.armL.rotation.z = 0.28; j.armR.rotation.z = -0.28; j.body.rotation.y = Math.sin(t * 0.4 + k) * 0.2; }
+      else if (name === 'inspect') { j.armR.rotation.x = -0.95; j.elbowR.rotation.x = -0.9; j.body.rotation.x = 0.06; j.body.rotation.y = Math.sin(t * 0.5 + k) * 0.25; }
+      else if (name === 'talk') { const g = Math.max(0, Math.sin(t * 1.3 + k * 2)); j.armR.rotation.x = -0.45 - g * 0.5; j.elbowR.rotation.x = -0.9 - g * 0.4; j.body.rotation.y = Math.sin(t * 0.7 + k) * 0.12; }
+      else if (name === 'present') { const g = Math.sin(t * 1.1 + k); j.armR.rotation.x = -0.7 - Math.max(0, g) * 0.6; j.armL.rotation.x = -0.7 - Math.max(0, -g) * 0.6; j.elbowL.rotation.x = j.elbowR.rotation.x = -0.6; }
+      p.carrying = name === 'carry';
+      p.phone = name === 'tap';
+    }
+    function standing(p) { pose(p, 0, 0); p.joints.body.rotation.x = 0; p.carrying = p.phone = false; }
+
+    // ---- routine: walk a list of waypoints, pausing to do something purposeful at each one, on a loop.
+    // Waypoint: { at: [x, z] (world), wait: seconds, act: pose while waiting, face: yaw while waiting,
+    //             carry: carry something on the way to the next waypoint, y: ground height, onAct(t, strength) }
+    function routine(k, wps, speed = 1.4) {
+      const p = person(k, wps[0].y ?? 0);
+      const legs = [];
+      wps.forEach((w, i) => {
+        const n = wps[(i + 1) % wps.length];
+        if (w.wait) legs.push({ wait: w.wait, w });
+        const dx = n.at[0] - w.at[0], dz = n.at[1] - w.at[1], d = Math.hypot(dx, dz);
+        if (d > 0.01) legs.push({ from: w, to: n, d, dur: d / speed, yaw: Math.atan2(dx, dz) });
+      });
+      legs.forEach((l) => { if (l.wait) l.dur = l.wait; });
+      const total = legs.reduce((a, l) => a + l.dur, 0);
+      let lastYaw = legs.find((l) => l.yaw !== undefined)?.yaw ?? 0;
+      updaters.push((t) => {
+        let r = ((t % total) + total) % total, dist = 0;
+        for (const l of legs) {
+          if (r <= l.dur) {
+            if (l.wait) {
+              const w = l.w;
+              p.g.position.set(w.at[0], w.y ?? 0, w.at[1]);
+              p.g.rotation.y = w.face ?? lastYaw;
+              standing(p);
+              if (w.act) act(p, w.act, t, k);
+              w.onAct?.(t, Math.sin(Math.min(1, r / l.dur) * Math.PI));
+            } else {
+              const f = r / l.dur, y0 = l.from.y ?? 0, y1 = l.to.y ?? 0;
+              p.g.position.set(l.from.at[0] + (l.to.at[0] - l.from.at[0]) * f, y0 + (y1 - y0) * f, l.from.at[1] + (l.to.at[1] - l.from.at[1]) * f);
+              p.g.rotation.y = lastYaw = l.yaw;
+              pose(p, ((dist + f * l.d) / STRIDE) * Math.PI * 2, 1);
+              p.joints.body.rotation.x = 0; p.carrying = p.phone = false;
+              if (l.from.carry) act(p, 'carry', t, k);
+            }
+            return;
+          }
+          r -= l.dur;
+          if (!l.wait) { dist += l.d; lastYaw = l.yaw; }
+        }
+      });
+      return p;
+    }
+    // Someone staying in one place, doing one thing
+    function station(k, at, face, name, y = 0) {
+      const p = person(k, y);
+      p.g.position.set(at[0], y, at[1]); p.g.rotation.y = face;
+      updaters.push((t) => { standing(p); act(p, name, t, k); });
+      return p;
+    }
+    const faceTo = (from, to) => Math.atan2(to[0] - from[0], to[1] - from[1]);
+    // A small group talking, everyone facing the middle
+    const meeting = (c, n, k0, y = 0) => { for (let j = 0; j < n; j++) { const a = (j / n) * Math.PI * 2 + 0.4; const at = [c[0] + Math.cos(a) * 0.8, c[1] + Math.sin(a) * 0.8]; station(k0 + j, at, faceTo(at, c), 'talk', y); } };
+
+    // ---- 01 Studio: loaders carry boxes from the pallet stack to the vans at the docks; a manager directs;
+    // a client meeting outside the office.
+    const pile = W(0, -12.6, 2.6);
+    [[-10, 2.0], [-5.4, 2.5], [-0.8, 2.0]].forEach(([vx, z], i) => {
+      const van = W(0, vx, z);
+      routine(60 + i, [
+        { at: pile, wait: 1.1, act: 'lift', face: faceTo(pile, W(0, -14.5, 3.4)), carry: true, y: 0.04 },
+        { at: van, wait: 1.0, act: 'lift', face: 0, y: 0.04 },
+      ], 1.5);
+    });
+    station(64, W(0, 4.2, 2.6), faceTo(W(0, 4.2, 2.6), W(0, -4, 3)), 'point', 0.04);
+    meeting(W(0, -21, 3.6), 3, 65);
+
+    // ---- 02 Websites: designers at their desks, a presenter walking the team through the three concepts
+    const deskSeats = [[0, 0], [2, 0], [4, 0], [1, 1], [3, 1], [0, 2], [2, 2], [4, 2], [1, 3], [3, 3]];
+    deskSeats.forEach(([c, r], i) => {
+      const at = W(1, -13 + c * 6.5, -6 + r * 5 + 1.3);
+      const p = person(70 + i, 1.2);
+      p.g.position.set(at[0], 1.2, at[1]); p.g.rotation.y = Math.PI; // facing the monitor
+      updaters.push((t) => {
+        standing(p);
+        const j = p.joints;
+        j.body.position.y = 0.12;
+        j.legL.rotation.x = j.legR.rotation.x = -1.5; j.kneeL.rotation.x = j.kneeR.rotation.x = 1.4;
+        j.armL.rotation.x = j.armR.rotation.x = -0.55; j.elbowL.rotation.x = -0.95 + Math.sin(t * 13 + i) * 0.06; j.elbowR.rotation.x = -0.95 + Math.sin(t * 11 + i * 2) * 0.06;
+        j.body.rotation.x = 0.08 + Math.sin(t * 0.5 + i) * 0.02;
+      });
+    });
+    routine(80, [
+      { at: W(1, -11, -11.2), wait: 3, act: 'point', face: Math.PI, y: 0.3 },
+      { at: W(1, 0, -11.2), wait: 3, act: 'point', face: Math.PI, y: 0.3 },
+      { at: W(1, 11, -11.2), wait: 3, act: 'point', face: Math.PI, y: 0.3 },
+      { at: W(1, 0, -11.2), wait: 2.5, act: 'present', face: 0, y: 0.3 },
+    ], 1.1);
+    meeting(W(1, 16.6, 11.5), 2, 81, 0.3);
+
+    // ---- 04 Ads & video: a film crew shoots talent presenting on the pier; grips bring gear from the stage
+    const pierTalent = [W(3, 2, -12.5), W(3, 2, -19)];
+    routine(84, [
+      { at: pierTalent[0], wait: 2.2, act: 'present', face: faceTo(pierTalent[0], W(3, 4, 16)), y: 0.5 },
+      { at: pierTalent[1], wait: 2.2, act: 'present', face: faceTo(pierTalent[1], W(3, 4, 16)), y: 0.5 },
+    ], 0.9);
+    station(85, W(3, 5.6, 17.6), faceTo(W(3, 5.6, 17.6), W(3, 2, -15)), 'film');
+    station(86, W(3, 0.6, 19.2), faceTo(W(3, 0.6, 19.2), W(3, 2, -15)), 'point');
+    const stageDoor = W(3, -5, 15), gearPile = W(3, 7.4, 20.4);
+    [0, 1].forEach((i) => routine(87 + i, [
+      { at: stageDoor, wait: 1, act: 'lift', face: Math.PI, carry: true },
+      { at: gearPile, wait: 1, act: 'lift', face: faceTo(gearPile, W(3, 8.5, 21.2)) },
+    ], 1.4));
+
+    // ---- 05 Automation: a customer sends the form at the storefront, another pays at the kiosk,
+    // a technician checks the lead engine
+    routine(90, [
+      { at: W(4, -34, 2.4), wait: 0 },
+      { at: W(4, -22, 1.4), wait: 2.6, act: 'tap', face: Math.PI },
+      { at: W(4, -3, 3.4), wait: 2.2, act: 'tap', face: Math.PI },
+      { at: W(4, 6, 4.2), wait: 0 },
+    ], 1.4);
+    routine(91, [
+      { at: W(4, 10, 1.6), wait: 3, act: 'inspect', face: Math.PI },
+      { at: W(4, 21, 1.6), wait: 3, act: 'inspect', face: Math.PI },
+    ], 1.2);
+
+    // ---- 06 Launch: shoppers walk Main Street and tap each shop's Business Card (the card lights up);
+    // pedestrians cross on the walk signal while traffic waits; friends meet at the plaza fountain
+    const SHOP_X = [-26, -13, 0];
+    [0, 1, 2, 3].forEach((n) => {
+      const order = n % 2 ? [2, 1, 0] : [0, 1, 2];
+      const wps = [{ at: W(5, n % 2 ? 34 : -44, 6.6), wait: 0, y: 0.17 }];
+      order.forEach((si) => wps.push({ at: W(5, SHOP_X[si] + 0.5, 5.9), wait: 2.4, act: 'tap', face: Math.PI, y: 0.17, onAct: (t, s) => { tapPulse[si] = Math.max(tapPulse[si], s); } }));
+      wps.push({ at: W(5, n % 2 ? -44 : 34, 6.6), wait: 0, y: 0.17 });
+      routine(100 + n, wps, 1.3 + n * 0.08);
+    });
+    // Crosswalk at x = 6: two people trade sides on each walk signal
+    [0, 1].forEach((i) => {
+      const p = person(110 + i, 0.17);
+      const near = W(5, 6 + (i ? 0.6 : -0.6), 7.4), far = W(5, 6 + (i ? 0.6 : -0.6), 16.6);
+      updaters.push((t) => {
+        const cyc = Math.floor(t / SIGNAL.period), c = t - cyc * SIGNAL.period;
+        const startNear = (cyc + i) % 2 === 0; // alternate directions each cycle
+        const a = startNear ? near : far, b = startNear ? far : near;
+        const f = Math.min(1, Math.max(0, (c - SIGNAL.walkFrom) / (SIGNAL.walkTo - SIGNAL.walkFrom - 0.4)));
+        const z = a[1] + (b[1] - a[1]) * f;
+        const onRoad = Math.abs(z - (CENTERS[5].z + 12)) < 3.5;
+        p.g.position.set(a[0], onRoad ? 0.06 : 0.17, z);
+        p.g.rotation.y = f > 0 && f < 1 ? faceTo(a, b) : faceTo(a, b);
+        if (f > 0 && f < 1) { pose(p, ((f * Math.abs(b[1] - a[1])) / STRIDE) * Math.PI * 2, 1); p.carrying = p.phone = false; }
+        else { standing(p); if (f === 0) act(p, 'tap', t, 110 + i); } // checking their phone while waiting
+      });
+    });
+    meeting(W(5, 40, 3), 3, 112, 0.04);
     // Draw the whole crew: one instanced mesh per body part, filled from each figure's joints every frame
     const parts = PARTS.flatMap(([joint, geo, kind, local]) => (kind === 'accent' ? ['gold', 'cyan'] : [kind]).map((m) => {
       const material = m === 'shadow' ? shadowMat(blobTex, 0.42) : PART_MATS[m];
@@ -1097,8 +1276,18 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       return { joint, im, local, accent: kind === 'accent' ? m : null };
     }));
     const tmpM = new THREE.Matrix4(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+    // Props held by the crew: parcels while carrying, a glowing phone while tapping
+    const PROPS = [
+      { im: new THREE.InstancedMesh(rounded(0.46, 0.34, 0.4, 0.03), mat('#d8c39e', { rough: 0.8 }), crew.length), joint: 'body', local: M4(0, 0.45, 0.36), on: (p) => p.carrying },
+      { im: new THREE.InstancedMesh(rounded(0.075, 0.14, 0.014, 0.008), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 1.7, 2.0), toneMapped: false }), crew.length), joint: 'elbowR', local: M4(0, -0.36, 0.06, 0.9), on: (p) => p.phone },
+    ];
+    PROPS.forEach((pr) => { pr.im.frustumCulled = false; pr.im.castShadow = true; scene.add(pr.im); });
     updaters.push(() => {
       crew.forEach((p) => p.g.updateMatrixWorld(true));
+      for (const pr of PROPS) {
+        crew.forEach((p, i) => pr.im.setMatrixAt(i, pr.on(p) ? tmpM.multiplyMatrices(p.joints[pr.joint].matrixWorld, pr.local) : hidden));
+        pr.im.instanceMatrix.needsUpdate = true;
+      }
       for (const part of parts) {
         crew.forEach((p, i) => {
           if (part.accent && part.accent !== p.accent) part.im.setMatrixAt(i, hidden);
@@ -1177,10 +1366,20 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       if (m.scale.y > 0.8 && m.scale.x * m.scale.z > 1.2 && base > -0.1 && base < 0.5) standing.push(m);
     });
     for (const m of standing) {
+      if (m.scale.x * m.scale.z > 3) { // keep trees out of buildings (in world space; scene groups aren't rotated)
+        const px = m.parent.position.x + m.position.x, pz = m.parent.position.z + m.position.z;
+        noTrees.push([px - m.scale.x / 2 - 1, px + m.scale.x / 2 + 1, pz - m.scale.z / 2 - 1, pz + m.scale.z / 2 + 1]);
+      }
       const k = Math.min(1, m.scale.y / 8);
       const ao = contactShadow(m.parent, m.position.x, m.position.z, m.scale.x * 1.18 + 1.4 + k * 1.5, m.scale.z * 1.18 + 1.4 + k * 1.5, 0.22 + 0.2 * k, m.position.y - m.scale.y / 2 + 0.045, aoTex);
       ao.rotation.y = m.rotation.y;
     }
+  }
+
+  // Trees grow on open ground only: drop any that landed on a road, sidewalk, building or plaza
+  for (let i = trees.length - 1; i >= 0; i--) {
+    const tr = trees[i];
+    if (tr.y < 1 && noTrees.some(([x0, x1, z0, z1]) => tr.x > x0 && tr.x < x1 && tr.z > z0 && tr.z < z1)) trees.splice(i, 1);
   }
 
   // ------------------------------------------------ instanced trees: two-lobed rounded crowns, colour variation, contact shadows
