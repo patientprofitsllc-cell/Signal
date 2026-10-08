@@ -15,6 +15,8 @@ const logo = dataUri('assets/logo-mark.webp', 'image/webp');
 const { outputFiles } = await build({
   entryPoints: [path.join(ROOT, 'main.js')],
   bundle: true, format: 'esm', minify: true, write: false, target: 'es2022',
+  // The vendored addons import the bare specifier 'three'; point it at the same vendored copy world.js uses
+  plugins: [{ name: 'three', setup(b) { b.onResolve({ filter: /^three$/ }, () => ({ path: path.join(ROOT, 'vendor/three.module.min.js') })); } }],
 });
 const js = outputFiles[0].text
   .replaceAll('assets/logo-mark.webp', logo)

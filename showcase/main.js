@@ -145,6 +145,26 @@ if (!world) {
   layout();
   window.addEventListener('resize', layout);
 
+  // -------------------------------------------------------------- resolution governor (up to 4K)
+  // Render at the screen's full sharpness, capped at a 4K pixel budget (3840×2160). If frames run slow,
+  // step the resolution down; when there is headroom again, step back up.
+  const PIXEL_BUDGET = 3840 * 2160;
+  const maxRatio = () => Math.max(1, Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(PIXEL_BUDGET / (W * H))));
+  const minRatio = lowPower ? 0.75 : 1;
+  let ratio = maxRatio(), frameMs = 16, lastFrameAt = 0, lastAdjust = 0;
+  world.setPixelRatio(ratio);
+  window.addEventListener('resize', () => { ratio = Math.min(ratio, maxRatio()); world.setPixelRatio(ratio); });
+  function govern(now) {
+    if (lastFrameAt) frameMs = frameMs * 0.92 + Math.min(100, now - lastFrameAt) * 0.08;
+    lastFrameAt = now;
+    if (now - lastAdjust < 1200) return;
+    lastAdjust = now;
+    if (frameMs > 24 && ratio > minRatio) ratio = Math.max(minRatio, ratio * 0.85);
+    else if (frameMs < 13 && ratio < maxRatio()) ratio = Math.min(maxRatio(), ratio * 1.12);
+    else return;
+    world.setPixelRatio(ratio);
+  }
+
   // -------------------------------------------------------------- frame
   let cur = 0, lastChapter = -1, lastTime = null;
   const progressFromScroll = () => Math.min(1, Math.max(0, (window.scrollY - worldEl.offsetTop) / scrollSpan()));
@@ -231,7 +251,8 @@ if (!world) {
       requestAnimationFrame(loop); // schedule first so one bad frame can't stop the animation
       try {
         // rAF time can precede t0 on the first frame, so clamp at zero
-        if (visible) frame(reduceMotion ? 0 : Math.max(0, now - t0) / 1000, reduceMotion ? 0 : 7);
+        if (visible) { frame(reduceMotion ? 0 : Math.max(0, now - t0) / 1000, reduceMotion ? 0 : 7); govern(now); }
+        else lastFrameAt = 0;
       } catch (e) { console.error(e); }
     };
     requestAnimationFrame(loop);
