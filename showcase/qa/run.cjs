@@ -42,7 +42,7 @@ async function checkViewport(browser, base, vp, opts = {}) {
   p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   p.on('requestfailed', (r) => { if (!r.url().startsWith('data:')) errors.push('request failed: ' + r.url()); });
 
-  await p.goto(base);
+  await p.goto(base, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await p.waitForFunction(() => document.getElementById('loader')?.classList.contains('done'), null, { timeout: 15000 })
     .then(() => pass(label, 'loader clears'), () => fail(label, 'loader clears', 'loader still visible after 15s'));
   await p.waitForTimeout(800);
@@ -139,7 +139,7 @@ async function checkViewport(browser, base, vp, opts = {}) {
   }
 
   // Keyboard: on a fresh load, the first Tab lands on the skip link, which is visible when focused
-  await p.goto(base);
+  await p.goto(base, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await p.waitForFunction(() => document.getElementById('loader')?.classList.contains('done'), null, { timeout: 15000 }).catch(() => {});
   await p.waitForTimeout(1000);
   await p.keyboard.press('Tab');
@@ -177,7 +177,7 @@ async function checkNoWebGL(browser, base) {
   const p = await ctx.newPage();
   await p.addInitScript(() => { const o = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/.test(t) ? null : o.call(this, t, ...a); }; });
   const errors = []; p.on('pageerror', (e) => errors.push(e.message));
-  await p.goto(base);
+  await p.goto(base, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await p.waitForTimeout(3000);
   const s = await p.evaluate(() => ({ loaderDone: document.getElementById('loader').classList.contains('done'), fallback: document.documentElement.classList.contains('no-webgl'), cardVisible: getComputedStyle(document.getElementById('hero-card')).display !== 'none' }));
   s.loaderDone && s.fallback && s.cardVisible && errors.length === 0 ? pass('no WebGL', 'graceful fallback') : fail('no WebGL', 'graceful fallback', JSON.stringify({ ...s, errors }));
@@ -203,10 +203,12 @@ async function checkLinks() {
   const base = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
-    for (const vp of VIEWPORTS) await checkViewport(browser, base, vp);
-    await checkViewport(browser, base, VIEWPORTS[5], { dark: true });
-    await checkViewport(browser, base, VIEWPORTS[1], { reduced: true });
-    await checkNoWebGL(browser, base);
+    // One failing viewport is recorded and the run continues, so the report is always written
+    const guard = async (name, fn) => { try { await fn(); } catch (e) { fail(name, 'run completed', e.message.split('\n')[0]); } };
+    for (const vp of VIEWPORTS) await guard(vp.name, () => checkViewport(browser, base, vp));
+    await guard('desktop-1440 (dark OS)', () => checkViewport(browser, base, VIEWPORTS[5], { dark: true }));
+    await guard('phone-390 (reduced motion)', () => checkViewport(browser, base, VIEWPORTS[1], { reduced: true }));
+    await guard('no WebGL', () => checkNoWebGL(browser, base));
     if (!process.argv.includes('--no-links')) await checkLinks();
   } finally { await browser.close(); server.close(); }
 
