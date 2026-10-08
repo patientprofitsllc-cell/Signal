@@ -35,6 +35,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 const matCache = new Map();
 function mat(color, o = {}) {
+  if (color === C.glass && o.rough === undefined) o = { ...o, rough: 0.08, metal: 0.55 }; // glass reflects the sky
   const key = color + JSON.stringify(o, (k, v) => (v && v.isTexture ? v.uuid : v));
   if (matCache.has(key)) return matCache.get(key);
   let m;
@@ -241,13 +242,54 @@ function wordmarkTexture(logo, dark = true) {
     g.fillText('creations.', 270, 210);
   });
 }
+// Backlit neon sign: smoked-glass panel, glowing rim and glowing letters
 function labelTexture(text, { bg = '#1a1a16', fg = '#ecebe4', font = F.sans(600, 80), w = 1024, h = 192 } = {}) {
   return tex(w, h, (g) => {
-    g.fillStyle = bg; rr(g, 0, 0, w, h, 24); g.fill();
-    g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, w / 2, h / 2 + 4);
+    const grd = g.createLinearGradient(0, 0, 0, h);
+    grd.addColorStop(0, shade(bg, 18)); grd.addColorStop(1, shade(bg, -10));
+    g.fillStyle = grd; rr(g, 0, 0, w, h, 24); g.fill();
+    g.save(); g.shadowColor = fg; g.shadowBlur = h * 0.12;
+    g.strokeStyle = fg; g.globalAlpha = 0.85; g.lineWidth = Math.max(3, h * 0.025); rr(g, h * 0.07, h * 0.07, w - h * 0.14, h - h * 0.14, 16); g.stroke();
+    g.globalAlpha = 1; g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowBlur = h * 0.18; g.fillText(text, w / 2, h / 2 + 4);
+    g.shadowBlur = h * 0.05; g.fillText(text, w / 2, h / 2 + 4);
+    g.restore();
+    const sheen = g.createLinearGradient(0, 0, w, h); // glass reflection
+    sheen.addColorStop(0, 'rgba(255,255,255,0.10)'); sheen.addColorStop(0.45, 'rgba(255,255,255,0)'); sheen.addColorStop(1, 'rgba(255,255,255,0.04)');
+    g.fillStyle = sheen; rr(g, 0, 0, w, h, 24); g.fill();
   });
 }
+function shade(hex, pct) {
+  const n = parseInt(hex.slice(1), 16), f = (c) => Math.max(0, Math.min(255, Math.round(c + (pct / 100) * 255)));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+// Asphalt with painted lane lines, tiled along the road
+function asphaltTexture(withCentre = true) {
+  const t = tex(512, 256, (g, w, h) => {
+    g.fillStyle = '#5b5a55'; g.fillRect(0, 0, w, h);
+    const r = rng(21);
+    for (let i = 0; i < 5000; i++) { g.fillStyle = r() > 0.5 ? `rgba(255,255,255,${r() * 0.07})` : `rgba(0,0,0,${r() * 0.12})`; g.fillRect(r() * w, r() * h, 1.4, 1.4); }
+    g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, h * 0.18, w, h * 0.12); g.fillRect(0, h * 0.7, w, h * 0.12); // tyre wear
+    g.fillStyle = '#ecebe4'; g.fillRect(0, h * 0.045, w, h * 0.03); g.fillRect(0, h * 0.925, w, h * 0.03); // edge lines
+    if (withCentre) { g.fillStyle = '#e6c77d'; g.fillRect(0, h * 0.485, w * 0.55, h * 0.03); } // dashed centre line
+  });
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+function paverTexture() {
+  const t = tex(256, 256, (g, w, h) => {
+    g.fillStyle = '#e8e4da'; g.fillRect(0, 0, w, h);
+    const r = rng(8);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+      const v = r() * 26; // one tone shift per stone, so pavers vary in lightness, not hue
+      g.fillStyle = `rgba(${206 + v},${200 + v},${188 + v},0.55)`;
+      g.fillRect(x * 64 + (y % 2) * 32 + 2, y * 32 + 2, 60, 28);
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
 function numberSprite(n) {
   const t = tex(256, 256, (g) => {
     g.fillStyle = 'rgba(219,183,126,0.25)'; g.beginPath(); g.arc(128, 128, 124, 0, 7); g.fill();
@@ -387,23 +429,51 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     plane(g, 2.6, 0.65, decalMat, 1.17, 2.3, -0.7, Math.PI / 2);
     plane(g, 2.6, 0.65, decalMat, -1.17, 2.3, -0.7, -Math.PI / 2);
     wheels(g, [[1.02, 1.95], [-1.02, 1.95], [1.02, -1.75], [-1.02, -1.75]]);
+    for (const sx of [1.17, -1.17]) part(g, rounded(0.03, 0.05, 3.6, 0.02), cyanGlow, sx, 0.78, -0.7, false); // underglow line
     contactShadow(g, 0, 0, 3.1, 5.6, 0.45);
     parent.add(g);
     return g;
   }
-  // Small hatchback for the mountain road
-  const carBody = rounded(1.75, 0.85, 3.6, 0.3), carCabin = rounded(1.55, 0.7, 2.0, 0.28);
+  // Sleek electric car: extruded aerodynamic profile, glass canopy, light bars and glowing wheel rims
+  function profileGeo(pts, depth, bevel) {
+    const sh = new THREE.Shape(); pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 12 });
+    geo.translate(0, 0, -depth / 2); geo.rotateY(-Math.PI / 2); // length along +z, like the vans
+    geo.computeVertexNormals();
+    return geo;
+  }
+  const evBody = profileGeo([[-2.2, 0.42], [2.15, 0.42], [2.3, 0.62], [2.05, 0.86], [1.15, 0.98], [0.2, 1.36], [-1.35, 1.34], [-2.15, 1.02]], 1.72, 0.09);
+  const evGlass = profileGeo([[1.1, 0.99], [0.22, 1.33], [-1.3, 1.31], [-1.98, 1.04]], 1.9, 0.03); // a touch wider than the body, so the windows show
+  const barGeo = rounded(1.6, 0.06, 0.06, 0.025);
+  const rimGlowGeo = new THREE.TorusGeometry(0.3, 0.025, 8, 28); rimGlowGeo.rotateY(Math.PI / 2);
+  const cyanGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.75, 1.9, 2.3), toneMapped: false });
+  const EV_PAINT = [paint, paintSand, mat('#2c3038', { rough: 0.25, metal: 0.6, clearcoat: 0.8 }), mat('#9fb3ad', { rough: 0.3, metal: 0.4, clearcoat: 0.7 })];
+  let evCount = 0;
   function car(parent) {
     const g = new THREE.Group();
-    part(g, carBody, paintSand, 0, 0.82, 0);
-    part(g, carCabin, glassMat, 0, 1.5, -0.25);
-    part(g, rounded(1.58, 0.12, 2.02, 0.05), paintSand, 0, 1.88, -0.25);
-    part(g, lampGeo, headMat, 0.55, 0.9, 1.8, false); part(g, lampGeo, headMat, -0.55, 0.9, 1.8, false);
-    part(g, lampGeo, tailMat, 0.6, 0.95, -1.8, false); part(g, lampGeo, tailMat, -0.6, 0.95, -1.8, false);
-    wheels(g, [[0.82, 1.15], [-0.82, 1.15], [0.82, -1.15], [-0.82, -1.15]]);
-    contactShadow(g, 0, 0, 2.4, 4.4, 0.45);
+    part(g, evBody, EV_PAINT[evCount++ % EV_PAINT.length], 0, 0, 0);
+    part(g, evGlass, glassMat, 0, 0, 0, false);
+    part(g, barGeo, headMat, 0, 0.78, 2.32, false);
+    part(g, barGeo, tailMat, 0, 0.92, -2.24, false);
+    for (const [x, z] of [[0.8, 1.35], [-0.8, 1.35], [0.8, -1.35], [-0.8, -1.35]]) {
+      part(g, tyreGeo, tyreMat, x, 0.44, z); part(g, rimGeo, rimMat, x, 0.44, z, false);
+      part(g, rimGlowGeo, cyanGlow, x * 1.02, 0.44, z, false);
+    }
+    contactShadow(g, 0, 0, 2.3, 4.9, 0.5);
     parent.add(g);
     return g;
+  }
+  // Traffic in both lanes of a straight road (local x axis), looping out of view
+  function traffic(parent, roadZ, len, n, speed) {
+    for (let i = 0; i < n; i++) {
+      const dir = i % 2 ? 1 : -1, c = car(parent);
+      c.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      const lane = roadZ + (dir > 0 ? 1.75 : -1.75), off = (i / n) * len;
+      updaters.push((t) => {
+        const x = (((t * speed + off) % len) + len) % len - len / 2; // same speed per lane, so cars never overlap
+        c.position.set(dir * x, 0.06, lane);
+      });
+    }
   }
 
   // ---- soft contact shadows (cheap ambient occlusion where things meet the ground)
@@ -429,13 +499,61 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     return m;
   }
 
-  function road(parent, x, z, len, w, ry = 0) {
+  // Realistic street: textured asphalt, raised curbs, paver sidewalks, crosswalks and street lamps.
+  // Layers are spaced in height (asphalt 0.06, curbs 0.2, sidewalks 0.17) so nothing is coplanar and flickers.
+  const asphalt = asphaltTexture(), paver = paverTexture();
+  const curbMat = mat('#d6d2c8', { rough: 0.7 });
+  const lampHead = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 1.25, 1.0), toneMapped: false });
+  const metal = mat('#b9bcbb', { rough: 0.35, metal: 0.8 });
+  function road(parent, x, z, len, w, ry = 0, { sidewalk = 2.6, lamps = true, crossings = [] } = {}) {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry;
-    box(g, len, 0.05, w, C.road, 0, 0, 0, { cast: false });
-    for (let i = -len / 2 + 2; i < len / 2 - 2; i += 5) box(g, 2.2, 0.06, 0.25, '#f7f6f1', i, 0, 0, { cast: false });
+    const at = asphalt.clone(); at.repeat.set(len / 14, 1); at.needsUpdate = true;
+    const surf = new THREE.Mesh(new THREE.PlaneGeometry(len, w).rotateX(-Math.PI / 2), mat('#ffffff', { map: at, rough: 0.92 }));
+    surf.position.y = 0.06; surf.receiveShadow = true; g.add(surf);
+    for (const sd of [-1, 1]) {
+      box(g, len, 0.2, 0.3, '', 0, 0, sd * (w / 2 + 0.15), { material: curbMat });
+      if (sidewalk) {
+        const pt = paver.clone(); pt.repeat.set(len / 3, sidewalk / 3); pt.needsUpdate = true;
+        box(g, len, 0.17, sidewalk, '', 0, 0, sd * (w / 2 + 0.3 + sidewalk / 2), { material: mat('#ffffff', { map: pt, rough: 0.85 }), cast: false });
+      }
+      if (lamps) for (let i = -len / 2 + 7; i < len / 2 - 4; i += 16) {
+        const lz = sd * (w / 2 + 0.6);
+        cyl(g, 0.07, 0.1, 4.6, '', i, 0.17, lz, { material: metal, seg: 10 });
+        const arm = box(g, 0.12, 0.1, 1.3, '', i, 4.65, lz - sd * 0.6, { material: metal });
+        const head = box(g, 0.3, 0.08, 0.7, '', i, 4.58, lz - sd * 1.15, { material: lampHead, cast: false });
+        glow(g, i, 4.4, lz - sd * 1.15, 1.4, '#ffe2a8', 0.16);
+      }
+    }
+    for (const cx of crossings) for (let k = -w / 2 + 0.6; k < w / 2 - 0.4; k += 0.9) {
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.5).rotateX(-Math.PI / 2), mat('#eeece5', { rough: 0.8, offset: true }));
+      bar.position.set(cx, 0.065, k); bar.receiveShadow = true; g.add(bar);
+    }
     parent.add(g);
     return g;
   }
+  // Additive glow sprite: a soft halo around lights and neon so they read as luminous
+  const glowTex = tex(128, 128, (g) => {
+    const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.25, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  });
+  const glowMats = new Map();
+  function glow(parent, x, y, z, size, color, opacity = 0.5) {
+    const k = color + opacity;
+    if (!glowMats.has(k)) glowMats.set(k, new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const sp = new THREE.Sprite(glowMats.get(k)); sp.position.set(x, y, z); sp.scale.set(size, size, 1);
+    parent.add(sp);
+    return sp;
+  }
+  // Self-lit sign face + a soft halo so signage glows like a backlit panel
+  const signMat = (map) => new THREE.MeshBasicMaterial({ map, toneMapped: false });
+  function sign(parent, w, h, map, x, y, z, ry = 0, rx = 0, haloColor = '#ffd994') {
+    const m = plane(parent, w, h, signMat(map), x, y, z, ry, rx);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.7, h * 2.4), new THREE.MeshBasicMaterial({ map: glowTex, color: haloColor, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    back.position.set(x, y, z); back.rotation.set(rx, ry, 0, 'YXZ'); back.translateZ(-0.04); parent.add(back);
+    return m;
+  }
+
   function treeField(cx, cz, rx, rz, n, opts = {}) {
     for (let i = 0; i < n; i++) {
       const x = cur.x + cx + (R() * 2 - 1) * rx, z = cur.z + cz + (R() * 2 - 1) * rz;
@@ -447,7 +565,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   // ------------------------------------------------ 01 · The studio (Emons dock scene)
   {
     const g = new THREE.Group(); g.position.copy(CENTERS[0]); scene.add(g); cur = CENTERS[0];
-    road(g, 0, 15, 150, 7);
+    road(g, 0, 15.8, 150, 7, 0, { sidewalk: 2.2, crossings: [-20, 30] });
     box(g, 44, 0.04, 10, C.pad, 2, 0, 6.5, { cast: false });
     box(g, 30, 8, 14, C.white, 2, 0, -6);
     box(g, 5, 8.6, 14.4, C.sand, 19.5, 0, -6);
@@ -456,10 +574,21 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       box(g, 3, 4, 0.2, '#3b3c36', -10 + i * 4.6, 0, 1.05);
       box(g, 3.4, 0.25, 0.6, C.sand, -10 + i * 4.6, 4.1, 1.2, { cast: false });
     }
-    for (let r = 0; r < 3; r++) box(g, 24, 0.7, 1.4, '#cfd5d4', 1, 8.5, -11 + r * 4);
+    // Rooftop solar arrays
+    const solarTex = tex(256, 128, (c, w, h) => {
+      c.fillStyle = '#1b2738'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = 'rgba(160,190,220,0.35)'; c.lineWidth = 2;
+      for (let x = 0; x <= w; x += w / 8) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
+      for (let y = 0; y <= h; y += h / 4) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+    });
+    const solarMat = mat('#ffffff', { map: solarTex, rough: 0.12, metal: 0.6 });
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) {
+      const pnl = box(g, 3.6, 0.08, 2.2, '', -10 + c * 4, 8.85, -11 + r * 4, { material: solarMat });
+      pnl.rotation.x = -0.32;
+      box(g, 0.12, 0.5, 0.12, '', -10 + c * 4, 8.5, -11 + r * 4 + 0.7, { material: metal });
+    }
     // Rooftop sign
-    const sign = plane(g, 12, 3, mat('#ffffff', { map: wordmark }), 2, 10.6, -0.2);
-    sign.castShadow = true;
+    sign(g, 12, 3, wordmark, 2, 10.6, -0.2);
     box(g, 0.3, 2.2, 0.3, C.ink, -3, 8.5, -0.4); box(g, 0.3, 2.2, 0.3, C.ink, 7, 8.5, -0.4);
     // Glass office annex
     box(g, 11, 6.5, 11, C.white, -21, 0, -4);
@@ -470,7 +599,8 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     // Parked vans backed into the docks
     [-10, -5.4, -0.8, 8.4].forEach((x) => van(g, x, 6.4, 0));
     // Moving vans on the road
-    const v1 = van(g, 0, 13.3, -Math.PI / 2), v2 = van(g, 0, 16.7, Math.PI / 2);
+    const v1 = van(g, 0, 14.05, -Math.PI / 2), v2 = van(g, 0, 17.55, Math.PI / 2);
+    v1.position.y = v2.position.y = 0.06;
     updaters.push((t) => {
       v1.position.x = 70 - ((t * 7) % 140);
       v2.position.x = -70 + ((t * 5 + 60) % 140);
@@ -622,7 +752,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       const roof = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 14.8, 24), mat(C.offwhite));
       roof.rotation.z = Math.PI / 2; roof.position.set(x, 5, z); roof.castShadow = roof.receiveShadow = true; g.add(roof);
       box(g, 5, 4.2, 0.2, C.sand, x, 0, z + 5.05);
-      plane(g, 2.4, 1.2, mat('#ffffff', { map: labelTexture('STAGE ' + n, { w: 512, h: 256, font: F.sans(600, 90) }) }), x, 7.2, z + 4.4, 0, -0.35);
+      sign(g, 2.4, 1.2, labelTexture('STAGE ' + n, { w: 512, h: 256, fg: '#dbb77e', font: F.sans(600, 90) }), x, 7.2, z + 4.4, 0, -0.35);
     }
     stage(-22, 6, 1); stage(-5, 9, 2);
     // Billboards
@@ -719,7 +849,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     ring2.position.copy(ring.position); g.add(ring2);
     cyl(g, 0.3, 0.5, 1.3, C.ink, 14, 7.5, -6);
     updaters.push((t) => { ring.rotation.y = t * 0.6; ring2.rotation.x = t * 0.8; });
-    plane(g, 8, 1.5, mat('#ffffff', { map: labelTexture('LEAD ENGINE') }), 12, 8.6, 0.1);
+    sign(g, 8, 1.5, labelTexture('LEAD ENGINE', { fg: '#8fe9ff' }), 12, 8.6, 0.1, 0, 0, '#8fe9ff');
     // Conduit with travelling packets
     box(g, 30, 0.35, 0.35, '#cfcabd', -3, 6.5, -2);
     const packets = [];
@@ -728,7 +858,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     cyl(g, 0.25, 0.25, 6.5, '#cfcabd', -17.6, 0, -2); cyl(g, 0.25, 0.25, 6.5, '#cfcabd', 11.6, 0, -2);
     // Payment kiosk
     box(g, 1.8, 2.8, 1.2, C.ink, -3, 0, 2);
-    plane(g, 1.3, 0.9, mat('#ffffff', { basic: true, map: labelTexture('PAID ✓', { bg: '#141412', fg: '#dbb77e', w: 512, h: 352, font: F.sans(600, 96) }) }), -3, 2.2, 2.61);
+    sign(g, 1.3, 0.9, labelTexture('PAID ✓', { bg: '#141412', fg: '#dbb77e', w: 512, h: 352, font: F.sans(600, 96) }), -3, 2.2, 2.61);
     treeField(-44, -6, 8, 12, 16); treeField(0, -22, 30, 4, 16); treeField(44, -10, 8, 10, 14); treeField(0, 22, 40, 5, 20);
     keepOut.push([base.x, base.z, 34]);
     hs(4, -22, 9.5, 0, 'Lead capture', 'Forms that catch every inquiry, day or night.');
@@ -741,8 +871,8 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   {
     const base = CENTERS[5]; cur = base;
     const g = new THREE.Group(); g.position.copy(base); scene.add(g);
-    road(g, 0, 12, 100, 7);
-    box(g, 70, 0.12, 3.4, '#f4f2ec', -4, 0, 7, { cast: false });
+    road(g, 0, 12, 100, 7, 0, { sidewalk: 3, crossings: [-19.5, 6] });
+    traffic(g, 12, 100, 4, 7);
     const shops = [
       { x: -26, label: 'THE CUT', bg: '#1a1a16', fg: '#dbb77e', body: C.white, card: ['Tap to review', 'Google reviews, one tap'] },
       { x: -13, label: 'AT THE TABLE', bg: '#dbb77e', fg: '#1a1a16', body: '#f3ebdc', card: ['Tap for our menu', 'Menu, hours & location'] },
@@ -753,7 +883,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       box(g, 11.1, 0.5, 8.1, C.offwhite, s.x, 5.5, 1);
       box(g, 6, 2.6, 0.12, C.glass, s.x - 1.5, 0.3, 5.02, { cast: false });
       box(g, 1.6, 3, 0.12, C.ink, s.x + 3.2, 0, 5.02, { cast: false });
-      plane(g, 7, 1.3, mat('#ffffff', { map: labelTexture(s.label, { bg: s.bg, fg: s.fg }) }), s.x, 4.4, 5.12);
+      sign(g, 7, 1.3, labelTexture(s.label, { bg: s.bg === '#dbb77e' ? '#2a2216' : s.bg, fg: s.fg === '#1a1a16' ? '#ffd994' : s.fg }), s.x, 4.4, 5.14, 0, 0, s.fg === '#1a1a16' ? '#ffd994' : s.fg);
       // Floating tap-to-share Business Card
       const card = new THREE.Group(); g.add(card);
       box(card, 3.6, 2.16, 0.08, C.ink, 0, -1.08, 0);
@@ -774,17 +904,33 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     updaters.push((t) => { poleTex.offset.y = -t * 0.5; });
     // Restaurant awning + tables
     const awning = box(g, 8, 0.25, 2.4, C.sand, -13, 3.3, 6); awning.rotation.x = 0.25;
-    for (const tx of [-16, -11]) { cyl(g, 0.7, 0.7, 0.9, C.white, tx, 0, 7.4); cyl(g, 0.06, 0.06, 2.2, C.ink, tx, 0.9, 7.4); const u = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.7, 12), mat(C.offwhite)); u.position.set(tx, 3.3, 7.4); u.castShadow = true; g.add(u); }
+    for (const tx of [-16, -11]) { cyl(g, 0.7, 0.7, 0.9, C.white, tx, 0.17, 7.2); cyl(g, 0.06, 0.06, 2.2, C.ink, tx, 1.07, 7.2); const u = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.7, 16), mat(C.offwhite)); u.position.set(tx, 3.47, 7.2); u.castShadow = true; g.add(u); }
     // Patient Creations tower
     const win = windowsTexture(6, 12);
-    const winMat = mat('#ffffff', { map: win, emissiveMap: win, emissive: '#ffffff', ei: 0.55 });
+    // Glass curtain wall: reflects the sky, with warm light from inside
+    const winMat = mat('#ffffff', { map: win, emissiveMap: win, emissive: '#ffffff', ei: 0.45, rough: 0.12, metal: 0.5 });
     box(g, 14, 4, 12, C.white, 22, 0, -4);
     box(g, 12, 22, 10, C.ink, 22, 4, -4, { material: winMat });
     box(g, 12.4, 0.6, 10.4, C.offwhite, 22, 26, -4);
     box(g, 4.2, 26.6, 4.2, C.sand, 29, 0, 1);
     box(g, 9, 12, 9, C.ink, 10, 0, -10, { material: winMat });
+    // Gold vertical fins and white floor slabs (instanced), rooftop garden and a glowing crown ring
+    const finMat = mat(C.sand, { rough: 0.3, metal: 0.85 });
+    const fins = new THREE.InstancedMesh(BOX, finMat, 24), slabs = new THREE.InstancedMesh(BOX, mat(C.offwhite, { rough: 0.6 }), 10);
+    const fm = new THREE.Matrix4(), q0 = new THREE.Quaternion();
+    for (let i = 0; i < 12; i++) { fins.setMatrixAt(i, fm.compose(new THREE.Vector3(16.5 + i, 15, 1.15), q0, new THREE.Vector3(0.14, 22, 0.5))); }
+    for (let i = 0; i < 12; i++) { fins.setMatrixAt(12 + i, fm.compose(new THREE.Vector3(28.15, 15, -8.5 + i * 0.85), q0, new THREE.Vector3(0.5, 22, 0.12))); }
+    for (let i = 0; i < 10; i++) slabs.setMatrixAt(i, fm.compose(new THREE.Vector3(22, 6.2 + i * 2.2, -4), q0, new THREE.Vector3(12.25, 0.14, 10.25)));
+    fins.castShadow = slabs.castShadow = true; fins.receiveShadow = slabs.receiveShadow = true;
+    g.add(fins, slabs);
+    box(g, 11, 0.5, 9, C.sage, 22, 26.6, -4, { material: mat('#8fae84', { rough: 0.95 }) });
+    for (let i = 0; i < 6; i++) trees.push({ x: base.x + 18.5 + (i % 3) * 3.4, z: base.z - 6.8 + Math.floor(i / 3) * 4.6, y: 27.1, s: 0.45 + (i % 2) * 0.15 });
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(7.4, 0.14, 10, 96), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 1.6, 0.9), toneMapped: false }));
+    crown.rotation.x = Math.PI / 2; crown.position.set(22, 28.2, -4); g.add(crown);
+    updaters.push((t) => { crown.position.y = 28.2 + Math.sin(t * 0.8) * 0.25; crown.rotation.z = t * 0.2; });
+    glow(g, 22, 28.2, -4, 22, '#ffd58f', 0.18);
     box(g, 0.3, 2.6, 0.3, C.ink, 18, 26.6, -1.5); box(g, 0.3, 2.6, 0.3, C.ink, 26, 26.6, -1.5);
-    plane(g, 11, 2.75, mat('#ffffff', { map: wordmark }), 22, 30.4, -1.2);
+    sign(g, 11, 2.75, wordmark, 22, 30.4, -1.2);
     // Plaza + park
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(6, 40), mat('#e6e2d6'));
     plaza.rotation.x = -Math.PI / 2; plaza.position.set(36, 0.03, 8); plaza.receiveShadow = true; g.add(plaza);
@@ -817,69 +963,117 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   // ------------------------------------------------ life: people, birds, cloud shadows, water shimmer
   {
     const at = (i, x, z) => new THREE.Vector3(CENTERS[i].x + x, 0, CENTERS[i].z + z);
-    // ---- people: jointed figures (hips, knees-free legs, shoulders) with a stride-matched walk cycle
-    const torsoGeo = new THREE.CapsuleGeometry(0.2, 0.42, 6, 14);
-    const headGeo = new THREE.SphereGeometry(0.125, 18, 14);
-    const hairGeo = new THREE.SphereGeometry(0.132, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55);
-    const armGeo = new THREE.CapsuleGeometry(0.06, 0.46, 4, 10); armGeo.translate(0, -0.29, 0);
-    const legGeo = new THREE.CapsuleGeometry(0.08, 0.66, 4, 10); legGeo.translate(0, -0.41, 0);
-    const shoeGeo = rounded(0.13, 0.08, 0.26, 0.03);
+    // ---- people: tall athletic figures in tech-wear (armour plates, backpack loadout, light-lined suits,
+    // glowing visors). Each figure is a skeleton of joints; all body parts are drawn as instanced meshes,
+    // so the whole crowd costs ~30 draw calls no matter how many people there are.
+    const crew = [];
+    const SUIT = ['#2b2f36', '#e8e6e1', '#cdb184', '#4a5568', '#f2efe8', '#1f3a34', '#3b2f2a'];
+    const ARMOR = ['#d9bd86', '#f4f3ef', '#3a3d42', '#c9cdd2'];
     const SKIN = ['#8d5a3b', '#c68e6a', '#e0b48f', '#a86f4c', '#f1c9a5', '#6b4430'];
-    const TOPS = [C.white, C.sand, C.inkSoft, '#8fa58f', '#c9a77a', '#e9e4d8', '#5d6f84', '#b8573f'];
-    const BOTTOMS = ['#2c2d27', '#3e4a5a', '#d8cfbd', '#5b4636', '#1d2826'];
-    const HAIR = ['#1f1a16', '#3b2a1f', '#6b4a2e', '#c9a46a', '#2a2a2a'];
-    function person(k) {
-      const g = new THREE.Group();
-      const skin = mat(SKIN[k % SKIN.length], { rough: 0.6 }), top = mat(TOPS[(k * 3) % TOPS.length], { rough: 0.85 });
-      const bottom = mat(BOTTOMS[(k * 7) % BOTTOMS.length], { rough: 0.9 }), shoe = mat('#2a2622', { rough: 0.5 });
-      const body = new THREE.Group(); body.position.y = 0.96; g.add(body);
-      part(body, torsoGeo, top, 0, 0.42, 0);
-      part(body, headGeo, skin, 0, 0.86, 0.01);
-      part(body, hairGeo, mat(HAIR[(k * 5) % HAIR.length], { rough: 0.7 }), 0, 0.875, -0.008).rotation.x = -0.25;
-      const limb = (geo, m, x, y) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); part(pivot, geo, m, 0, 0, 0); body.add(pivot); return pivot; };
-      const armL = limb(armGeo, top, 0.27, 0.66), armR = limb(armGeo, top, -0.27, 0.66);
-      part(armL, headGeo, skin, 0, -0.6, 0, false).scale.setScalar(0.42);
-      part(armR, headGeo, skin, 0, -0.6, 0, false).scale.setScalar(0.42);
-      const legL = limb(legGeo, bottom, 0.11, 0.02), legR = limb(legGeo, bottom, -0.11, 0.02);
-      part(legL, shoeGeo, shoe, 0, -0.9, 0.06); part(legR, shoeGeo, shoe, 0, -0.9, 0.06);
-      contactShadow(g, 0, 0, 0.9, 0.9, 0.4);
-      scene.add(g);
-      return { g, body, armL, armR, legL, legR };
+    const HAIR = ['#1f1a16', '#3b2a1f', '#d8d4cc', '#c9a46a', '#2a2a2a'];
+    const PART_MATS = {
+      suit: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.55, metalness: 0.15 }),
+      armor: new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.25, metalness: 0.6, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
+      skin: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 }),
+      hair: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }),
+      gold: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.1, 1.65, 0.9), toneMapped: false, side: THREE.DoubleSide }),
+      cyan: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.75, 1.9, 2.3), toneMapped: false, side: THREE.DoubleSide }),
+    };
+    const M4 = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
+    const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 6, 14);
+    const sph = (r, ts = Math.PI) => new THREE.SphereGeometry(r, 20, 14, 0, Math.PI * 2, 0, ts);
+    const chestGeo = new THREE.CylinderGeometry(0.25, 0.165, 0.42, 18); // broad shoulders, narrow waist
+    const visorGeo = new THREE.CylinderGeometry(0.121, 0.121, 0.042, 24, 1, true, -1.15, 2.3);
+    const ringGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16, 1, true);
+    const accentBar = new THREE.BoxGeometry(1, 1, 1);
+    // [joint, geometry, material ('accent' = gold or cyan per person), local matrix]
+    const PARTS = [
+      ['body', rounded(0.34, 0.2, 0.22, 0.07), 'suit', M4(0, 0.02, 0)],
+      ['body', cap(0.14, 0.14), 'suit', M4(0, 0.24, 0)],
+      ['body', chestGeo, 'suit', M4(0, 0.5, 0, 0, 0, 0, 1, 1, 0.62)],
+      ['body', rounded(0.36, 0.26, 0.08, 0.035), 'armor', M4(0, 0.53, 0.11)],
+      ['body', accentBar, 'accent', M4(0, 0.47, 0.152, 0, 0, 0, 0.3, 0.018, 0.012)],
+      ['body', accentBar, 'accent', M4(0, 0.3, 0.13, 0, 0, 0, 0.018, 0.2, 0.012)],
+      ['body', new THREE.CylinderGeometry(0.055, 0.06, 0.1, 12), 'skin', M4(0, 0.76, 0)],
+      ['body', sph(0.115), 'skin', M4(0, 0.88, 0.01, 0, 0, 0, 0.92, 1.08, 1)],
+      ['body', sph(0.124, Math.PI * 0.55), 'hair', M4(0, 0.9, -0.012, -0.3, 0, 0, 0.94, 1.05, 1.02)],
+      ['body', visorGeo, 'accent', M4(0, 0.893, 0.012)],
+      ['body', rounded(0.3, 0.36, 0.13, 0.04), 'armor', M4(0, 0.5, -0.17)],
+      ['body', accentBar, 'accent', M4(0.08, 0.5, -0.237, 0, 0, 0, 0.02, 0.26, 0.012)],
+      ['body', accentBar, 'accent', M4(-0.08, 0.5, -0.237, 0, 0, 0, 0.02, 0.26, 0.012)],
+      ['body', sph(0.118, Math.PI / 2), 'armor', M4(0.28, 0.68, 0, 0, 0, -0.35)],
+      ['body', sph(0.118, Math.PI / 2), 'armor', M4(-0.28, 0.68, 0, 0, 0, 0.35)],
+      ...['L', 'R'].flatMap((k) => [
+        ['arm' + k, cap(0.055, 0.22), 'suit', M4(0, -0.17, 0)],
+        ['elbow' + k, cap(0.05, 0.2), 'suit', M4(0, -0.15, 0)],
+        ['elbow' + k, ringGeo, 'accent', M4(0, -0.2, 0)],
+        ['elbow' + k, sph(0.05), 'skin', M4(0, -0.31, 0, 0, 0, 0, 0.8, 1.25, 0.6)],
+        ['leg' + k, cap(0.085, 0.3), 'suit', M4(0, -0.22, 0)],
+        ['knee' + k, sph(0.07), 'armor', M4(0, 0, 0.045, 0, 0, 0, 1, 1.2, 0.8)],
+        ['knee' + k, cap(0.07, 0.3), 'suit', M4(0, -0.21, 0)],
+        ['knee' + k, rounded(0.12, 0.11, 0.27, 0.04), 'armor', M4(0, -0.47, 0.04)],
+        ['knee' + k, accentBar, 'accent', M4(0, -0.52, 0.04, 0, 0, 0, 0.125, 0.018, 0.275)],
+      ]),
+      ['root', flatPlane, 'shadow', M4(0, 0.03, 0, 0, 0, 0, 0.95, 1, 0.95)],
+    ];
+    function person(k, baseY = 0) {
+      const root = new THREE.Object3D(); root.position.y = baseY; scene.add(root);
+      const body = new THREE.Object3D(); body.position.y = 1.0; root.add(body);
+      const j = { root, body };
+      for (const side of ['L', 'R']) {
+        const sx = side === 'L' ? 1 : -1;
+        const arm = new THREE.Object3D(); arm.position.set(0.28 * sx, 0.62, 0); body.add(arm);
+        const elbow = new THREE.Object3D(); elbow.position.set(0, -0.33, 0); arm.add(elbow);
+        const leg = new THREE.Object3D(); leg.position.set(0.105 * sx, -0.04, 0); body.add(leg);
+        const knee = new THREE.Object3D(); knee.position.set(0, -0.45, 0); leg.add(knee);
+        Object.assign(j, { ['arm' + side]: arm, ['elbow' + side]: elbow, ['leg' + side]: leg, ['knee' + side]: knee });
+      }
+      const p = {
+        g: root, body, armL: j.armL, armR: j.armR, legL: j.legL, legR: j.legR, joints: j,
+        accent: k % 3 === 0 ? 'cyan' : 'gold',
+        colors: { suit: SUIT[(k * 3) % SUIT.length], armor: ARMOR[(k * 5) % ARMOR.length], skin: SKIN[k % SKIN.length], hair: HAIR[(k * 7) % HAIR.length] },
+      };
+      crew.push(p);
+      return p;
     }
-    const STRIDE = 1.5; // metres per full gait cycle
     function pose(p, phase, swing) {
-      const s = Math.sin(phase);
-      p.legL.rotation.x = s * 0.5 * swing; p.legR.rotation.x = -s * 0.5 * swing;
-      p.armL.rotation.x = -s * 0.42 * swing; p.armR.rotation.x = s * 0.42 * swing;
-      p.body.position.y = 0.96 + Math.abs(Math.cos(phase)) * 0.045 * swing;
-      p.body.rotation.y = s * 0.06 * swing;
+      const s = Math.sin(phase), c = Math.cos(phase), j = p.joints;
+      j.legL.rotation.x = -s * 0.5 * swing; j.legR.rotation.x = s * 0.5 * swing;
+      j.kneeL.rotation.x = Math.max(0, c) * 0.85 * swing; j.kneeR.rotation.x = Math.max(0, -c) * 0.85 * swing;
+      j.armL.rotation.x = s * 0.45 * swing; j.armR.rotation.x = -s * 0.45 * swing;
+      j.elbowL.rotation.x = -0.2 - Math.max(0, -s) * 0.35 * swing; j.elbowR.rotation.x = -0.2 - Math.max(0, s) * 0.35 * swing;
+      j.armL.rotation.z = 0.06; j.armR.rotation.z = -0.06;
+      j.body.position.y = 1.0 + Math.abs(c) * 0.04 * swing;
+      j.body.rotation.y = s * 0.07 * swing;
     }
-    function walker(points, speed, offset, k) {
+    const STRIDE = 1.6; // metres per full gait cycle
+    function walker(points, speed, offset, k, baseY = 0) {
       const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.2);
-      const p = person(k);
+      const p = person(k, baseY);
       const len = curve.getLength();
       updaters.push((t) => {
         const dist = t * speed + offset * len;
         const u = Math.min(0.999, Math.max(0, ((dist / len) % 1 + 1) % 1));
         const pt = curve.getPointAt(u), tg = curve.getTangentAt(u);
-        p.g.position.set(pt.x, 0, pt.z);
+        p.g.position.set(pt.x, baseY, pt.z);
         p.g.rotation.y = Math.atan2(tg.x, tg.z);
         pose(p, (dist / STRIDE) * Math.PI * 2, 1);
       });
     }
-    // Small groups standing and chatting
-    function idle(x, z, face, k) {
-      const p = person(k);
-      p.g.position.set(x, 0, z); p.g.rotation.y = face;
+    // Small groups standing and talking
+    function idle(x, z, face, k, baseY = 0) {
+      const p = person(k, baseY);
+      p.g.position.set(x, baseY, z); p.g.rotation.y = face;
       updaters.push((t) => {
         pose(p, 0, 0);
-        p.armR.rotation.x = -0.35 - Math.max(0, Math.sin(t * 1.3 + k * 2)) * 0.6; // gesturing while talking
-        p.armR.rotation.z = -0.15;
+        const talk = Math.max(0, Math.sin(t * 1.3 + k * 2));
+        p.joints.armR.rotation.x = -0.45 - talk * 0.5;
+        p.joints.elbowR.rotation.x = -0.9 - talk * 0.4;
         p.body.rotation.y = Math.sin(t * 0.7 + k) * 0.12;
       });
     }
-    const chat = (i, x, z, n, k0) => { for (let j = 0; j < n; j++) { const a = (j / n) * Math.PI * 2; idle(CENTERS[i].x + x + Math.cos(a) * 0.75, CENTERS[i].z + z + Math.sin(a) * 0.75, Math.atan2(-Math.cos(a), -Math.sin(a)), k0 + j); } }; // each faces the group's centre
-    chat(0, 6, 4.5, 2, 40); chat(0, -18, 5, 3, 43); chat(3, -14, 17, 2, 46); chat(5, -20, 6.8, 2, 48); chat(5, 8, 7, 3, 50); chat(4, -8, 3.6, 2, 53);
+    const chat = (i, x, z, n, k0, baseY = 0) => { for (let j = 0; j < n; j++) { const a = (j / n) * Math.PI * 2; idle(CENTERS[i].x + x + Math.cos(a) * 0.8, CENTERS[i].z + z + Math.sin(a) * 0.8, Math.atan2(-Math.cos(a), -Math.sin(a)), k0 + j, baseY); } }; // each faces the group's centre
+    chat(0, 6, 4.5, 2, 40, 0.04); chat(0, -18, 5, 3, 43, 0.04); chat(3, -14, 17, 2, 46); chat(5, -20, 6.6, 2, 48, 0.17); chat(5, 8, 6.8, 3, 50, 0.17); chat(4, -8, 3.6, 2, 53);
     const loops = [
       [[at(0, -15, 3.5), at(0, 14, 3.5), at(0, 14, 9.5), at(0, -15, 9.5)], 4],
       [[at(1, -16, -9.5), at(1, 16, -9.5), at(1, 16, 11), at(1, -16, 11)], 3],
@@ -888,7 +1082,31 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       [[at(5, -38, 6.2), at(5, 30, 6.2), at(5, 30, 7.8), at(5, -38, 7.8)], 6],
     ];
     let k = 0;
-    loops.forEach(([pts, n]) => { for (let i = 0; i < n; i++, k++) walker(pts, 1.3 + (k % 3) * 0.25, i / n + R() * 0.1, k); });
+    const loopY = [0.04, 0, 0, 0, 0.17];
+    loops.forEach(([pts, n], li) => { for (let i = 0; i < n; i++, k++) walker(pts, 1.3 + (k % 3) * 0.25, i / n + R() * 0.1, k, loopY[li]); });
+
+    // Draw the whole crew: one instanced mesh per body part, filled from each figure's joints every frame
+    const parts = PARTS.flatMap(([joint, geo, kind, local]) => (kind === 'accent' ? ['gold', 'cyan'] : [kind]).map((m) => {
+      const material = m === 'shadow' ? shadowMat(blobTex, 0.42) : PART_MATS[m];
+      const im = new THREE.InstancedMesh(geo, material, crew.length);
+      im.frustumCulled = false;
+      im.castShadow = m !== 'shadow'; im.receiveShadow = m !== 'shadow' && m !== 'gold' && m !== 'cyan';
+      if (m === 'shadow') im.renderOrder = 1;
+      if (PART_MATS[m] && !(m === 'gold' || m === 'cyan')) crew.forEach((p, i) => im.setColorAt(i, new THREE.Color(p.colors[m])));
+      scene.add(im);
+      return { joint, im, local, accent: kind === 'accent' ? m : null };
+    }));
+    const tmpM = new THREE.Matrix4(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+    updaters.push(() => {
+      crew.forEach((p) => p.g.updateMatrixWorld(true));
+      for (const part of parts) {
+        crew.forEach((p, i) => {
+          if (part.accent && part.accent !== p.accent) part.im.setMatrixAt(i, hidden);
+          else part.im.setMatrixAt(i, tmpM.multiplyMatrices(p.joints[part.joint].matrixWorld, part.local));
+        });
+        part.im.instanceMatrix.needsUpdate = true;
+      }
+    });
 
     // Bird flocks
     const wingGeo = new THREE.BufferGeometry();
@@ -933,7 +1151,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       const x0 = R() * 620 - 80, z0 = -R() * 260 + 60, sp = 2.2 + R() * 1.5;
       updaters.push((t) => {
         const x = ((x0 + t * sp) % 640 + 640) % 640 - 100;
-        cl.position.set(x, 0.12, z0 - (x - x0) * 0.1);
+        cl.position.set(x, 0.25, z0 - (x - x0) * 0.1); // above every street layer (max 0.2) so it never z-fights
       });
     }
 

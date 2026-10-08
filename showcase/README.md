@@ -46,6 +46,13 @@ The QA suite runs the single-file build under the same Content-Security-Policy a
 After the 3D section: welcome headline, services, pricing, process and a call to action. Every button links to the matching page on patientcreations.com.
 
 - `world.js`: the Three.js scene. All geometry is built from primitives and canvas textures (no model files), plus the camera path.
+- Rendering: up to 4K (a 3840×2160 pixel budget) on every device, with a governor that steps resolution down only if frames run slow. Materials are physically based with studio reflections, and the textures are drawn at double resolution. Contact shadows sit under everything, and the shadow edges stay steady while the camera moves.
+- A utopian look:
+  - Streets have textured asphalt with painted lanes, curbs, paver sidewalks, crosswalks and glowing street lamps, layered so nothing flickers.
+  - Electric cars with glass canopies, light bars and glowing rims drive both lanes.
+  - People are tall, athletic figures in armored tech-wear, with a backpack loadout, a glowing visor and light-lined suits. They have a full walk cycle and are drawn as instanced parts, so the crowd stays cheap.
+  - Signs are backlit neon panels.
+  - The glass tower has gold fins, a rooftop garden and a crown light ring, and the studio roof carries solar arrays.
 - The world is alive: vans, a car, a train, drones, boats, walking people, bird flocks, drifting cloud shadows, shimmering water, and a slow idle camera drift.
 - `main.js`: scroll → camera progress, chapter card, chapter nav, "+" hotspots, loader, mobile menu.
 - `vendor/three.module.min.js`: three r169 (MIT, see `vendor/THREE-LICENSE`). Fonts are self-hosted from Fontsource (OFL).
