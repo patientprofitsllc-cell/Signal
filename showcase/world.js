@@ -493,7 +493,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     g.add(car);
     const up = new THREE.Vector3();
     updaters.push((t) => {
-      const u = (t * 0.03) % 1;
+      const u = Math.min(0.999, Math.max(0, (t * 0.03) % 1));
       const p = curve.getPointAt(u), tg = curve.getTangentAt(u);
       car.position.set(p.x, height(p.x, p.z) + 0.1, p.z);
       up.set(p.x + tg.x, 0, p.z + tg.z);
@@ -747,7 +747,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       p.add(body, head); scene.add(p);
       const len = curve.getLength();
       updaters.push((t) => {
-        const u = (((t * speed) / len + offset) % 1 + 1) % 1;
+        const u = Math.min(0.999, (((t * speed) / len + offset) % 1 + 1) % 1);
         const pt = curve.getPointAt(u), tg = curve.getTangentAt(u);
         const step = Math.abs(Math.sin(t * speed * 2.6 + k));
         p.position.set(pt.x, step * 0.12, pt.z);

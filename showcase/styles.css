@@ -25,6 +25,7 @@
   --font-accent: "Instrument Serif", Georgia, serif;
   --font-display: "Fraunces", Georgia, serif;
   --radius: 14px;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -83,7 +84,7 @@ img { display: block; }
 .topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 28px; pointer-events: none;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 28px 18px; pointer-events: none;
 }
 .topbar > * { pointer-events: auto; }
 .brand {

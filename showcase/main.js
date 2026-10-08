@@ -50,6 +50,9 @@ loaderFill.style.width = '25%';
 const [logo] = await Promise.all([loadLogo(), loadFonts()]);
 loaderFill.style.width = '60%';
 
+// If anything below fails, still reveal the page content rather than an endless loader
+setTimeout(() => $('loader').classList.add('done'), 8000);
+
 const lowPower = matchMedia('(max-width: 640px)').matches || (navigator.hardwareConcurrency || 8) <= 4;
 const world = createWorld(canvas, { logo, lowPower, capture: CAPTURE });
 
@@ -159,8 +162,10 @@ if (CAPTURE) {
   let visible = true;
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(worldEl);
   const loop = (now) => {
-    if (visible) frame(reduce ? 0 : (now - t0) / 1000, reduce ? 0 : 0.085);
-    requestAnimationFrame(loop);
+    requestAnimationFrame(loop); // schedule first so one bad frame can't stop the animation
+    try {
+      if (visible) frame(reduce ? 0 : Math.max(0, now - t0) / 1000, reduce ? 0 : 0.085); // rAF time can precede t0
+    } catch (e) { console.error(e); }
   };
   requestAnimationFrame(loop);
   done();
