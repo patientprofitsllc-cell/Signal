@@ -41,6 +41,7 @@ function mat(color, o = {}) {
     color, map: o.map || null, flatShading: !!o.flat, side: o.side || THREE.FrontSide,
     emissive: o.emissive || '#000000', emissiveMap: o.emissiveMap || null, emissiveIntensity: o.ei ?? 1,
     vertexColors: !!o.vc, transparent: !!o.transparent, opacity: o.opacity ?? 1,
+    polygonOffset: !!o.offset, polygonOffsetFactor: o.offset ? -2 : 0, polygonOffsetUnits: o.offset ? -4 : 0,
   });
   matCache.set(key, m);
   return m;
@@ -447,7 +448,8 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     const W = 110, D = 84;
     const hRaw = (x, z) => 3.2 + 3.6 * Math.sin(x * 0.075) * Math.cos(z * 0.07) + 2.2 * Math.sin(x * 0.16 + 1.3) + 1.8 * Math.cos(z * 0.13 + 0.5);
     const fall = (x, z) => smooth(clamp01((W / 2 - Math.abs(x)) / 16)) * smooth(clamp01((D / 2 - Math.abs(z)) / 14));
-    const height = (x, z) => Math.max(0, hRaw(x, z)) * fall(x, z);
+    // +0.08 keeps flat valleys just above the ground plane; at exactly 0 the two surfaces z-fight and flicker
+    const height = (x, z) => Math.max(0, hRaw(x, z)) * fall(x, z) + 0.08;
     const geo = new THREE.PlaneGeometry(W, D, 88, 68);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -477,14 +479,15 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       const nx = -tz / l, nz = tx / l;
       for (const s of [-1, 1]) {
         const x = p.x + nx * half * s, z = p.z + nz * half * s;
-        verts.push(x, height(x, z) + 0.12, z);
+        verts.push(x, height(x, z) + 0.3, z);
       }
       if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     }
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     rg.setIndex(idx); rg.computeVertexNormals();
-    const roadMesh = new THREE.Mesh(rg, mat('#f6f4ee', { side: THREE.DoubleSide }));
+    // Lifted and depth-biased so the faceted hills never poke through the road
+    const roadMesh = new THREE.Mesh(rg, mat('#f6f4ee', { side: THREE.DoubleSide, offset: true }));
     roadMesh.receiveShadow = true;
     g.add(roadMesh);
     // Car travelling the road
@@ -495,7 +498,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     updaters.push((t) => {
       const u = Math.min(0.999, Math.max(0, (t * 0.03) % 1));
       const p = curve.getPointAt(u), tg = curve.getTangentAt(u);
-      car.position.set(p.x, height(p.x, p.z) + 0.1, p.z);
+      car.position.set(p.x, height(p.x, p.z) + 0.3, p.z);
       up.set(p.x + tg.x, 0, p.z + tg.z);
       car.lookAt(up.x, car.position.y, up.z);
     });
@@ -511,7 +514,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
       const y = height(p.x, p.z);
       cyl(g, 0.12, 0.12, 3.2, C.ink, p.x + 2.2, y, p.z);
       const s = numberSprite('0' + (i + 1)); s.position.set(p.x + 2.2, y + 4.4, p.z); g.add(s);
-      hs(2, p.x + 2.2, y + 6.4, p.z, steps[i][0], steps[i][1]);
+      hs(2, p.x + 2.2, y + 8.6, p.z, steps[i][0], steps[i][1]); // clear of the number disc below it
     });
     // Trees on the hills, kept off the road
     for (let i = 0; i < 180; i++) {
@@ -769,7 +772,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     const wingGeo = new THREE.BufferGeometry();
     wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.22, 0, 0, 0.22, 0.8, 0, 0], 3));
     wingGeo.computeVertexNormals();
-    const wingMat = mat(C.inkSoft, { side: THREE.DoubleSide });
+    const wingMat = mat('#7d7b72', { side: THREE.DoubleSide });
     for (let f = 0; f < 4; f++) {
       const c = CENTERS[[0, 2, 3, 5][f]];
       for (let b = 0; b < 6; b++) {
@@ -884,6 +887,10 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     state.dist = dist;
     scene.fog.near = dist * 0.75;
     scene.fog.far = dist * 2.6;
+    // Tight depth range around the subject: far better depth precision, so thin layers (roads, pads, decals) don't shimmer
+    camera.near = Math.max(1, dist * 0.3);
+    camera.far = dist * 3.2;
+    camera.updateProjectionMatrix();
     sun.position.copy(target).add(SUN_OFFSET);
     sun.target.position.copy(target);
     const span = Math.min(260, Math.max(75, dist * 0.55));
