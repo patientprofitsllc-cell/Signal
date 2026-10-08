@@ -733,6 +733,98 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     scene.add(f);
   }
 
+  // ------------------------------------------------ life: people, birds, cloud shadows, water shimmer
+  {
+    const at = (i, x, z) => new THREE.Vector3(CENTERS[i].x + x, 0, CENTERS[i].z + z);
+    const bodyGeo = new THREE.CapsuleGeometry(0.28, 0.85, 4, 10);
+    const headGeo = new THREE.SphereGeometry(0.24, 14, 10);
+    const shirts = [C.white, C.sand, C.inkSoft, '#8fa58f', '#c9a77a', '#e9e4d8'];
+    function walker(points, speed, offset, k) {
+      const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.2);
+      const p = new THREE.Group();
+      const body = new THREE.Mesh(bodyGeo, mat(shirts[k % shirts.length])); body.position.y = 0.95; body.castShadow = true;
+      const head = new THREE.Mesh(headGeo, mat('#c79a7c')); head.position.y = 1.78; head.castShadow = true;
+      p.add(body, head); scene.add(p);
+      const len = curve.getLength();
+      updaters.push((t) => {
+        const u = (((t * speed) / len + offset) % 1 + 1) % 1;
+        const pt = curve.getPointAt(u), tg = curve.getTangentAt(u);
+        const step = Math.abs(Math.sin(t * speed * 2.6 + k));
+        p.position.set(pt.x, step * 0.12, pt.z);
+        p.rotation.y = Math.atan2(tg.x, tg.z);
+        body.rotation.z = Math.sin(t * speed * 2.6 + k) * 0.06;
+      });
+    }
+    const loops = [
+      [[at(0, -15, 3.5), at(0, 14, 3.5), at(0, 14, 9.5), at(0, -15, 9.5)], 4],
+      [[at(1, -16, -9.5), at(1, 16, -9.5), at(1, 16, 11), at(1, -16, 11)], 3],
+      [[at(3, -26, 15), at(3, 8, 17), at(3, 12, 22), at(3, -24, 21)], 3],
+      [[at(4, -30, 3), at(4, 10, 3), at(4, 10, 4.5), at(4, -30, 4.5)], 2],
+      [[at(5, -38, 6.2), at(5, 30, 6.2), at(5, 30, 7.8), at(5, -38, 7.8)], 6],
+    ];
+    let k = 0;
+    loops.forEach(([pts, n]) => { for (let i = 0; i < n; i++, k++) walker(pts, 1.3 + (k % 3) * 0.25, i / n + R() * 0.1, k); });
+
+    // Bird flocks
+    const wingGeo = new THREE.BufferGeometry();
+    wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.35, 0, 0, 0.35, 1.3, 0, 0], 3));
+    wingGeo.computeVertexNormals();
+    const wingMat = mat(C.inkSoft, { side: THREE.DoubleSide });
+    for (let f = 0; f < 4; f++) {
+      const c = CENTERS[[0, 2, 3, 5][f]];
+      for (let b = 0; b < 6; b++) {
+        const bird = new THREE.Group();
+        const l = new THREE.Mesh(wingGeo, wingMat), r = new THREE.Mesh(wingGeo, wingMat);
+        r.scale.x = -1; bird.add(l, r); scene.add(bird);
+        const ox = (b % 3) * 1.6 - 1.6, oz = Math.floor(b / 3) * 1.8 + Math.abs(ox) * 0.6;
+        updaters.push((t) => {
+          const a = t * 0.12 + f * 1.9;
+          const R0 = 34 + f * 4;
+          const cx = c.x + Math.cos(a) * R0, cz = c.z + Math.sin(a) * R0;
+          const dir = a + Math.PI / 2;
+          bird.position.set(cx + Math.cos(dir) * -oz + Math.sin(dir) * ox, 24 + f * 2 + Math.sin(t * 0.8 + b) * 0.6, cz + Math.sin(dir) * -oz - Math.cos(dir) * ox);
+          bird.rotation.y = -dir + Math.PI / 2;
+          const flap = Math.sin(t * 9 + b * 0.9) * 0.55;
+          l.rotation.z = flap; r.rotation.z = -flap;
+        });
+      }
+    }
+
+    // Drifting cloud shadows
+    const cloudTex = tex(256, 256, (g) => {
+      const r2 = rng(11);
+      for (let i = 0; i < 7; i++) {
+        const x = 128 + (r2() - 0.5) * 110, y = 128 + (r2() - 0.5) * 70, rad = 40 + r2() * 50;
+        const grd = g.createRadialGradient(x, y, 0, x, y, rad);
+        grd.addColorStop(0, 'rgba(0,0,0,0.55)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+      }
+    });
+    const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, opacity: 0.16, depthWrite: false, color: '#3a3626' });
+    for (let i = 0; i < 12; i++) {
+      const cl = new THREE.Mesh(new THREE.PlaneGeometry(90 + R() * 60, 70 + R() * 40), cloudMat);
+      cl.rotation.x = -Math.PI / 2; cl.renderOrder = 1;
+      scene.add(cl);
+      const x0 = R() * 620 - 80, z0 = -R() * 260 + 60, sp = 2.2 + R() * 1.5;
+      updaters.push((t) => {
+        const x = ((x0 + t * sp) % 640 + 640) % 640 - 100;
+        cl.position.set(x, 0.12, z0 - (x - x0) * 0.1);
+      });
+    }
+
+    // Water shimmer
+    const shimmer = tex(256, 256, (g) => {
+      const r2 = rng(5);
+      g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 2; g.lineCap = 'round';
+      for (let i = 0; i < 70; i++) { const x = r2() * 256, y = r2() * 256, l = 6 + r2() * 18; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y - 3, x + l, y); g.stroke(); }
+    });
+    shimmer.wrapS = shimmer.wrapT = THREE.RepeatWrapping; shimmer.repeat.set(8, 3);
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(70, 26), new THREE.MeshBasicMaterial({ map: shimmer, transparent: true, opacity: 0.55, depthWrite: false }));
+    sh.rotation.x = -Math.PI / 2; sh.position.set(CENTERS[3].x - 6, 0.1, CENTERS[3].z - 24 + 13);
+    scene.add(sh);
+    updaters.push((t) => { shimmer.offset.set(t * 0.02, Math.sin(t * 0.5) * 0.02); sh.material.opacity = 0.4 + Math.sin(t * 1.7) * 0.15; });
+  }
+
   // ------------------------------------------------ instanced trees
   {
     const crown = new THREE.IcosahedronGeometry(1, 0);
@@ -768,7 +860,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
   const STOPS = KEYS.length - 1;
 
   const target = new THREE.Vector3();
-  const state = { f: 0, distScale: 1, dist: 120, w: 1, h: 1, shiftX: 0, shiftY: 0 };
+  const state = { f: 0, time: 0, distScale: 1, dist: 120, w: 1, h: 1, shiftX: 0, shiftY: 0 };
   function setProgress(f) {
     f = Math.min(STOPS, Math.max(0, f));
     state.f = f;
@@ -780,8 +872,9 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     // Pull back a little mid-flight for a sense of travel
     const lift = Math.sin(t * Math.PI) * (i + 1 === STOPS ? 0 : 0.22);
     const dist = lerp(a.dist, b.dist, t) * (1 + lift) * state.distScale;
-    const az = THREE.MathUtils.degToRad(lerp(a.az, b.az, t));
-    const el = THREE.MathUtils.degToRad(lerp(a.el, b.el, t) + lift * 10);
+    // Slow idle drift so the world never feels frozen
+    const az = THREE.MathUtils.degToRad(lerp(a.az, b.az, t) + Math.sin(state.time * 0.23) * 1.8);
+    const el = THREE.MathUtils.degToRad(lerp(a.el, b.el, t) + lift * 10 + Math.sin(state.time * 0.31) * 0.9);
     camera.position.set(
       target.x + dist * Math.cos(el) * Math.sin(az),
       target.y + dist * Math.sin(el),
@@ -809,7 +902,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     setProgress(state.f);
   }
 
-  function update(time) { for (const u of updaters) u(time); }
+  function update(time) { state.time = time; for (const u of updaters) u(time); }
   function render() { renderer.render(scene, camera); }
 
   const v = new THREE.Vector3();

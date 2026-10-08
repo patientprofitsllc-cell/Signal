@@ -106,8 +106,8 @@ function frame(time, smoothing) {
   cur = smoothing ? cur + (target - cur) * smoothing : target;
   if (Math.abs(target - cur) < 1e-4) cur = target;
 
-  world.setProgress(cur);
   world.update(time);
+  world.setProgress(cur);
   world.render();
 
   // Fade the world into the cream welcome section at the very end

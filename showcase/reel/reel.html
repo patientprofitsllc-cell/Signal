@@ -4,112 +4,16 @@
 <meta charset="utf-8" />
 <title>Patient Creations Reel</title>
 <!--
-  9:16 promo reel composition: a desk, a monitor showing the live site, a caption, and an outro.
-  Frames are driven explicitly by window.renderFrame(t) so render.mjs can capture them deterministically.
+  9:16 promo reel: a 3D desk scene (reel/room.js) filmed by a hand-held "phone", with the live site on the monitor,
+  a caption, and an outro. Frames are driven by window.renderFrame(t, screenImage, scroll) so render.cjs can
+  capture them deterministically; render.cjs supplies each screen image from the real site.
   Optional query params: ?handle=@yourhandle&caption=Websites%20in%202026
 -->
 <style>
-  :root {
-    --sand: #dbb77e;
-    --ig: linear-gradient(45deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
-  }
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 720px; height: 1280px; overflow: hidden; background: #1b1a17; }
   body { font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
-
-  .frame { position: absolute; inset: 0; overflow: hidden; }
-  .scene { position: absolute; inset: -30px; transform-origin: 50% 45%; }
-
-  /* Room */
-  .room {
-    position: absolute; inset: 0;
-    background:
-      radial-gradient(120% 60% at 50% 18%, rgba(255,255,255,0.35), rgba(255,255,255,0) 60%),
-      linear-gradient(180deg, #c9c6bf 0%, #bdb8ae 34%, #a8a194 42%, #d5cfc3 44%, #dcd6ca 70%, #c3bcae 100%);
-  }
-  .window {
-    position: absolute; left: 0; top: 150px; width: 520px; height: 300px;
-    background:
-      repeating-linear-gradient(90deg, rgba(255,255,255,0.0) 0 9px, rgba(255,255,255,0.55) 9px 13px, rgba(255,255,255,0.15) 13px 22px),
-      linear-gradient(180deg, #eef1ef, #dfe4e1 60%, #c9cdc8);
-    filter: blur(1.2px);
-  }
-  .window::after { /* mullions */
-    content: ""; position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent 32%, rgba(120,120,115,0.35) 32% 33%, transparent 33% 66%, rgba(120,120,115,0.35) 66% 67%, transparent 67%);
-  }
-  .curtain {
-    position: absolute; left: 470px; top: 120px; width: 290px; height: 360px;
-    background: repeating-linear-gradient(90deg, #4c4037 0 18px, #3e342c 18px 30px, #54473d 30px 44px);
-    filter: blur(1.5px);
-  }
-  .curtain.l { left: -40px; width: 70px; }
-  .lamp {
-    position: absolute; left: 270px; top: -60px; width: 200px; height: 150px; border-radius: 50%;
-    background: radial-gradient(60% 60% at 50% 70%, #f4efe6, #d8d0c2 70%, #bfb6a7);
-    filter: blur(0.6px); box-shadow: 0 20px 40px rgba(0,0,0,0.12);
-  }
-  .plant {
-    position: absolute; right: 10px; top: 560px; width: 120px; height: 260px; border-radius: 40% 40% 10% 10%;
-    background: radial-gradient(circle at 40% 30%, #4d5a43, #2b3327 70%); filter: blur(3px); opacity: 0.8;
-  }
-  .desk {
-    position: absolute; left: -40px; right: -40px; top: 880px; bottom: -40px;
-    background:
-      radial-gradient(70% 50% at 50% 10%, rgba(255,255,255,0.35), transparent 70%),
-      linear-gradient(180deg, #ddd7cb, #cdc6b8 60%, #b7af9f);
-  }
-  .desk::before { /* stone speckle */
-    content: ""; position: absolute; inset: 0; opacity: 0.35;
-    background-image: radial-gradient(rgba(90,80,65,0.35) 1px, transparent 1.3px), radial-gradient(rgba(255,255,255,0.5) 1px, transparent 1.3px);
-    background-size: 7px 9px, 11px 6px; background-position: 0 0, 3px 4px;
-  }
-
-  /* Monitor (24" all-in-one style) */
-  .imac {
-    position: absolute; left: 44px; top: 426px; width: 692px; height: 470px;
-    background: linear-gradient(180deg, #f3f3f1, #e3e4e2);
-    border-radius: 16px;
-    box-shadow: 0 30px 60px rgba(40,35,25,0.28), inset 0 0 0 1px rgba(0,0,0,0.06);
-  }
-  .screen {
-    position: absolute; left: 10px; top: 10px; width: 672px; height: 378px;
-    background: #fff; overflow: hidden; border-radius: 3px;
-  }
-  .screen iframe {
-    position: absolute; left: 0; top: 0; width: 1440px; height: 810px; border: 0;
-    transform: scale(0.46667); transform-origin: 0 0; pointer-events: none;
-  }
-  .glare { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,0.12), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06)); }
-  .cam { position: absolute; left: 50%; top: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #444; }
-  .chin {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 74px; border-radius: 0 0 16px 16px;
-    background: linear-gradient(180deg, #cfd2d0, #bfc3c1);
-  }
-  .neck {
-    position: absolute; left: 330px; top: 896px; width: 120px; height: 92px;
-    background: linear-gradient(90deg, #b9bcba, #d9dbd9 50%, #b4b7b5);
-    clip-path: polygon(6% 0, 94% 0, 100% 100%, 0 100%);
-  }
-  .foot { position: absolute; left: 300px; top: 980px; width: 180px; height: 26px; border-radius: 50%; background: #c9ccca; box-shadow: 0 8px 18px rgba(0,0,0,0.18); }
-
-  .keyboard {
-    position: absolute; left: 160px; top: 1010px; width: 420px; height: 150px; border-radius: 12px;
-    background:
-      repeating-linear-gradient(90deg, transparent 0 4px, rgba(0,0,0,0.0) 4px 26px, rgba(150,150,145,0.45) 26px 28px),
-      repeating-linear-gradient(180deg, transparent 0 4px, rgba(0,0,0,0) 4px 24px, rgba(150,150,145,0.45) 24px 26px),
-      #f1f1ef;
-    transform: perspective(500px) rotateX(52deg); transform-origin: 50% 0;
-    box-shadow: 0 6px 10px rgba(0,0,0,0.12);
-  }
-  .mouse {
-    position: absolute; left: 470px; top: 1160px; width: 70px; height: 110px; border-radius: 40px;
-    background: radial-gradient(circle at 40% 30%, #ffffff, #e3e3e0); box-shadow: 0 8px 14px rgba(0,0,0,0.18);
-    transform: perspective(500px) rotateX(45deg);
-  }
-
-  .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(90% 70% at 50% 45%, transparent 60%, rgba(0,0,0,0.28)); }
-
+  #room { position: absolute; inset: 0; width: 720px; height: 1280px; display: block; }
   /* Caption (stays put while the "phone" moves) */
   .caption {
     position: absolute; left: 90px; top: 266px; height: 74px; display: flex; align-items: center;
@@ -123,46 +27,25 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   }
 
-  .dim { position: absolute; inset: 0; background: #000; opacity: 0; }
   .outro { position: absolute; left: 0; right: 0; top: 560px; display: grid; justify-items: center; gap: 22px; opacity: 0; }
   .outro svg { width: 104px; height: 104px; }
   .outro span { color: #fff; font-weight: 800; font-size: 19px; letter-spacing: 0.2px; }
 </style>
 </head>
 <body>
-<div class="frame">
-  <div class="scene" id="scene">
-    <div class="room"></div>
-    <div class="window"></div>
-    <div class="curtain l"></div>
-    <div class="curtain"></div>
-    <div class="lamp"></div>
-    <div class="plant"></div>
-    <div class="desk"></div>
-    <div class="neck"></div>
-    <div class="foot"></div>
-    <div class="imac">
-      <div class="cam"></div>
-      <div class="screen"><iframe id="site" title="Patient Creations site" src="../index.html?capture=1" width="1440" height="810"></iframe><div class="glare"></div></div>
-      <div class="chin"></div>
-    </div>
-    <div class="keyboard"></div>
-    <div class="mouse"></div>
-    <div class="vignette"></div>
-  </div>
-
-  <div class="caption" id="caption"><span id="caption-text">Websites in 2026</span><span class="emoji">😮‍💨</span>:</div>
-  <svg class="ig-small" id="ig-small" viewBox="0 0 48 48" aria-hidden="true"></svg>
-  <div class="handle-small" id="handle-small"></div>
-
-  <div class="dim" id="dim"></div>
-  <div class="outro" id="outro">
-    <svg id="ig-big" viewBox="0 0 48 48" aria-hidden="true"></svg>
-    <span id="handle-big"></span>
-  </div>
+<canvas id="room"></canvas>
+<div class="caption" id="caption"><span id="caption-text">Websites in 2026</span><span class="emoji">😮‍💨</span>:</div>
+<svg class="ig-small" id="ig-small" viewBox="0 0 48 48" aria-hidden="true"></svg>
+<div class="handle-small" id="handle-small"></div>
+<div class="outro" id="outro">
+  <svg id="ig-big" viewBox="0 0 48 48" aria-hidden="true"></svg>
+  <span id="handle-big"></span>
 </div>
 
-<script>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
+<script type="module">
+  import { createRoom } from './room.js';
+
   const q = new URLSearchParams(location.search);
   const HANDLE = (q.get('handle') || 'patientcreations.com').toUpperCase();
   if (q.get('caption')) document.getElementById('caption-text').textContent = q.get('caption');
@@ -182,58 +65,47 @@
   function paintIg(svg, gradient, gid, hue) {
     const c = gradient ? `url(#${gid})` : '#fff';
     svg.querySelectorAll('rect,circle').forEach((n, i) => { if (i < 2) n.setAttribute('stroke', c); else n.setAttribute('fill', c); });
-    svg.style.filter = gradient && hue ? `hue-rotate(${hue}deg)` : 'none';
+    // Spin the gradient direction instead of shifting hues, so the colours stay on-brand for Instagram
+    const lg = svg.querySelector('linearGradient'), a = (hue || 0) * Math.PI / 180;
+    lg.setAttribute('x1', (0.5 - Math.cos(a) * 0.5).toFixed(3)); lg.setAttribute('y1', (0.5 + Math.sin(a) * 0.5).toFixed(3));
+    lg.setAttribute('x2', (0.5 + Math.cos(a) * 0.5).toFixed(3)); lg.setAttribute('y2', (0.5 - Math.sin(a) * 0.5).toFixed(3));
   }
-
-  const site = document.getElementById('site');
-  const scene = document.getElementById('scene');
-  const dim = document.getElementById('dim');
   const outro = document.getElementById('outro');
   const caption = document.getElementById('caption');
   const handleSmall = document.getElementById('handle-small');
-
   const clamp = (v) => Math.min(1, Math.max(0, v));
   const ease = (t) => t * t * (3 - 2 * t);
-  let M = null;
+
+  const room = createRoom(document.getElementById('room'));
 
   // Timeline (seconds), matched to the original reel:
-  //   0.0 – 8.0  scroll through the six 3D scenes
-  //   8.0 – 8.6  land on the welcome section
+  //   0.0 – 8.0  the site scrolls through its six 3D scenes
+  //   8.0 – 8.6  it lands on the welcome section
   //   8.7 – end  dimmed outro with the animated Instagram mark
-  window.REEL = { duration: 12.2, fps: 30 };
+  window.REEL = {
+    duration: 12.2, fps: 30,
+    scrollAt(t, M) {
+      if (t < 8.0) return M.top + (t / 8.0) * M.span;
+      return M.top + M.span + ease(clamp((t - 8.0) / 0.6)) * (M.welcome - M.top - M.span);
+    },
+  };
 
-  window.renderFrame = (t) => {
-    const w = site.contentWindow;
-    if (!M) M = w.__pc.span();
-    let y;
-    if (t < 8.0) y = M.top + (t / 8.0) * M.span;
-    else y = M.top + M.span + ease(clamp((t - 8.0) / 0.6)) * (M.welcome - M.top - M.span);
-    w.__pc.frame(y, t);
-
-    // Hand-held phone wobble
-    const dx = 2.4 * Math.sin(t * 1.7) + 1.1 * Math.sin(t * 4.3 + 1);
-    const dy = 1.9 * Math.sin(t * 1.3 + 2) + 0.8 * Math.sin(t * 5.1);
-    const r = 0.22 * Math.sin(t * 0.9);
-    scene.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) rotate(${r.toFixed(3)}deg)`;
-
-    // Small Instagram mark flickers between white and gradient, like the original
-    paintIg(igS, Math.floor(t * 2.2) % 3 === 1, 'gs', 0);
-
+  // t: seconds. screen: data URL of the site frame for this instant. scroll: page scroll position in px.
+  window.renderFrame = async (t, screen, scroll = 0) => {
+    if (screen) {
+      const img = new Image(); img.src = screen; await img.decode();
+      room.setScreen(img);
+    }
     const d = ease(clamp((t - 8.7) / 0.35));
-    dim.style.opacity = (0.66 * d).toFixed(3);
+    room.render(t, { scroll: scroll / 1000, dim: 0.62 * d });
+    paintIg(igS, Math.floor(t * 2.2) % 3 === 1, 'gs', 45);
     caption.style.opacity = (1 - 0.7 * d).toFixed(3);
     igS.style.opacity = handleSmall.style.opacity = (1 - d).toFixed(3);
     outro.style.opacity = d.toFixed(3);
     outro.style.transform = `scale(${(0.92 + 0.08 * d).toFixed(3)})`;
-    // Outro mark: gradient that cycles hue, settling on white at the end
     const late = t > 10.6;
-    paintIg(igB, !late || Math.floor(t * 3) % 4 === 0, 'gb', ((t - 8.7) * 70) % 360);
+    paintIg(igB, !late || Math.floor(t * 3) % 4 === 0, 'gb', 45 + (t - 8.7) * 120);
   };
-
-  site.addEventListener('load', () => {
-    const wait = () => (site.contentWindow.__pcReady ? (window.renderFrame(0), (window.reelReady = true)) : setTimeout(wait, 50));
-    wait();
-  });
+  await window.renderFrame(0);
+  window.reelReady = true;
 </script>
-</body>
-</html>

@@ -24,15 +24,22 @@ npm run dev        # python3 -m http.server 8080, then open http://localhost:808
 After the 3D section: welcome headline, services, pricing, process and a call to action. Every button links to the matching page on patientcreations.com.
 
 - `world.js`: the Three.js scene. All geometry is built from primitives and canvas textures (no model files), plus the camera path.
+- The world is alive: vans, a car, a train, drones, boats, walking people, bird flocks, drifting cloud shadows, shimmering water, and a slow idle camera drift.
 - `main.js`: scroll → camera progress, chapter card, chapter nav, "+" hotspots, loader, mobile menu.
 - `vendor/three.module.min.js`: three r169 (MIT, see `vendor/THREE-LICENSE`). Fonts are self-hosted from Fontsource (OFL).
 
 ## Promo reel
 
-`reel/reel.html` is the 9:16 composition (desk, monitor showing the live site, caption, Instagram outro). `reel/render.cjs` captures it frame by frame and encodes `reel/patient-creations-reel.mp4` (720×1280, 30 fps, 12.2 s, silent).
+`reel/patient-creations-reel.mp4` (720×1280, 30 fps, 12.2 s, silent) recreates the original "Websites in 2026" reel as a filmed-looking 3D shot:
+
+- `reel/room.js`: a Three.js desk scene. A 24" all-in-one monitor sits in front of a window, with sheer curtains blowing in a breeze, sunlight and god rays that dim as clouds pass, dust floating in the beam, a pendant lamp, a plant, a steaming mug, a keyboard and a mouse. Screen light spills onto the desk in the colour of whatever the site is showing.
+- The camera behaves like a phone in someone's hand. It opens on a rack focus, slowly pushes in, trembles and breathes, and makes small reframing corrections. Post-processing adds depth of field, bloom, lens fringing, grain and a vignette.
+- `reel/reel.html`: the caption, Instagram mark and dimmed outro on top.
+- `reel/render.cjs`: for every frame it draws the real site, screenshots it onto the monitor, and captures the shot.
 
 ```sh
 npm install && npm run reel -- --handle @yourhandle
+node reel/render.cjs --stills 0.5,4,9.5 --out-dir /tmp/stills   # quick preview frames
 ```
 
-Without `--handle` the reel shows `PATIENTCREATIONS.COM`. Add music in your editor or app when you post.
+Without `--handle` the reel shows `PATIENTCREATIONS.COM`. A full render takes 15 to 30 minutes on a machine without a GPU. Add music in your editor or app when you post.
