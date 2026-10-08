@@ -10,6 +10,28 @@ Static files, no build step. Serve the folder and open it:
 npm run dev        # python3 -m http.server 8080, then open http://localhost:8080
 ```
 
+## Live preview build and QA
+
+```sh
+npm install
+npm run build:artifact   # dist/patient-creations.html: one self-contained file (JS, fonts, logo inlined)
+npm run qa               # 427 checks; report + screenshots in qa/output/
+```
+
+The QA suite runs the single-file build under the same Content-Security-Policy as the artifact host. It covers 7 viewports (320px phone through 1920px desktop, plus phone landscape and portrait tablet), the dark OS setting, reduced motion, and a browser with no WebGL. Each run checks:
+
+- that the loader clears and the fonts load,
+- that every chapter button lands on its scene, with hotspots showing and never hidden under the card,
+- that tooltips stay on screen,
+- that nothing scrolls sideways,
+- that the card fits the screen,
+- the mobile menu and the Escape key,
+- that the skip link comes first,
+- an axe accessibility scan,
+- that the canvas follows a resize,
+- that the console has no errors,
+- that every outbound link returns 200.
+
 ## What's in it
 
 | Chapter | Scene | Service it sells |

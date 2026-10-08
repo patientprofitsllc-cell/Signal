@@ -767,7 +767,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
 
     // Bird flocks
     const wingGeo = new THREE.BufferGeometry();
-    wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.35, 0, 0, 0.35, 1.3, 0, 0], 3));
+    wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.22, 0, 0, 0.22, 0.8, 0, 0], 3));
     wingGeo.computeVertexNormals();
     const wingMat = mat(C.inkSoft, { side: THREE.DoubleSide });
     for (let f = 0; f < 4; f++) {
@@ -782,7 +782,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
           const R0 = 34 + f * 4;
           const cx = c.x + Math.cos(a) * R0, cz = c.z + Math.sin(a) * R0;
           const dir = a + Math.PI / 2;
-          bird.position.set(cx + Math.cos(dir) * -oz + Math.sin(dir) * ox, 24 + f * 2 + Math.sin(t * 0.8 + b) * 0.6, cz + Math.sin(dir) * -oz - Math.cos(dir) * ox);
+          bird.position.set(cx + Math.cos(dir) * -oz + Math.sin(dir) * ox, 30 + f * 2 + Math.sin(t * 0.8 + b) * 0.6, cz + Math.sin(dir) * -oz - Math.cos(dir) * ox);
           bird.rotation.y = -dir + Math.PI / 2;
           const flap = Math.sin(t * 9 + b * 0.9) * 0.55;
           l.rotation.z = flap; r.rotation.z = -flap;
@@ -911,5 +911,7 @@ export function createWorld(canvas, { logo, lowPower = false, capture = false } 
     return { x: (v.x * 0.5 + 0.5) * state.w, y: (-v.y * 0.5 + 0.5) * state.h, behind: v.z > 1 };
   }
 
-  return { setProgress, resize, update, render, project, hotspots, stops: STOPS, renderer };
+  const stats = () => ({ drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, textures: renderer.info.memory.textures });
+
+  return { setProgress, resize, update, render, project, stats, hotspots, stops: STOPS, renderer };
 }

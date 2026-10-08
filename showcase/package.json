@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "python3 -m http.server 8080",
     "reel": "node reel/render.cjs",
-    "build:artifact": "node build-artifact.mjs"
+    "build:artifact": "node build-artifact.mjs",
+    "qa": "node qa/run.cjs"
   },
   "devDependencies": {
-    "playwright": "1.56.1",
-    "esbuild": "0.24.0"
+    "axe-core": "^4.10.2",
+    "esbuild": "0.24.0",
+    "playwright": "1.56.1"
   }
 }
