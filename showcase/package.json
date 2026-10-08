@@ -1,0 +1,12 @@
+{
+  "name": "patient-creations-showcase",
+  "private": true,
+  "description": "Scroll-driven 3D site and promo reel for patientcreations.com",
+  "scripts": {
+    "dev": "python3 -m http.server 8080",
+    "reel": "node reel/render.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
