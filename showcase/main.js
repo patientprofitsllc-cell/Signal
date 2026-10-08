@@ -93,6 +93,29 @@ document.addEventListener('click', (e) => {
     if (inView && cur !== target) raf = requestAnimationFrame(draw);
   }
   const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
+
+  // Tap a side card to bring it to the centre; tap the centred card to see it full size
+  const lb = $('bc-lightbox'), lbMedia = $('bc-lb-media');
+  let opener = null;
+  function openCard(i) {
+    const c = cards[i];
+    lbMedia.replaceChildren(c.querySelector('.bc-face').firstElementChild.cloneNode(true));
+    lbMedia.style.setProperty('--ar', getComputedStyle(c).getPropertyValue('--ar'));
+    $('bc-lb-title').textContent = c.dataset.title;
+    $('bc-lb-desc').textContent = c.dataset.desc;
+    opener = c.querySelector('.bc-face');
+    lb.hidden = false;
+    $('bc-lb-close').focus();
+  }
+  function closeCard() { if (lb.hidden) return; lb.hidden = true; opener?.focus(); }
+  cards.forEach((c, i) => c.querySelector('.bc-face').addEventListener('click', () => (i === last ? openCard(i) : goTo(i))));
+  $('bc-lb-close').addEventListener('click', closeCard);
+  lb.addEventListener('click', (e) => { if (e.target === lb) closeCard(); });
+  document.addEventListener('keydown', (e) => {
+    if (lb.hidden) return;
+    if (e.key === 'Escape') closeCard();
+    if (e.key === 'Tab') { e.preventDefault(); lb.querySelector(e.shiftKey ? '#bc-lb-close' : '.bc-lb-text .pill').focus(); } // keep focus inside
+  });
   new IntersectionObserver(([e]) => { inView = e.isIntersecting; if (inView) kick(); }).observe(sec);
   window.addEventListener('scroll', () => { if (inView) kick(); }, { passive: true });
   window.addEventListener('resize', kick);

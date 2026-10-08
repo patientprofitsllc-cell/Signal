@@ -11,6 +11,8 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p));
 const dataUri = (p, type) => `data:${type};base64,${read(p).toString('base64')}`;
 
 const logo = dataUri('assets/logo-mark.webp', 'image/webp');
+// Card photos referenced from the HTML (assets/cards/*.webp) become data URIs too
+const inlineCards = (txt) => txt.replace(/assets\/cards\/[a-z0-9-]+\.webp/g, (f) => dataUri(f, 'image/webp'));
 
 const { outputFiles } = await build({
   entryPoints: [path.join(ROOT, 'main.js')],
@@ -30,12 +32,13 @@ const html = read('index.html').toString();
 const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'))
   .replace(/<script type="module" src="main\.js"><\/script>/, '')
   .replaceAll('assets/logo-mark.webp', logo);
+const bodyInlined = inlineCards(body);
 
 // The host supplies the doctype, <head> and <body>; the page starts with its own title and styles.
 const out = `<title>Patient Creations</title>
 <meta name="description" content="Patient Creations builds cinematic AI websites, cinematic and UGC ads, Business Cards, software, and multi-agent systems." />
 <style>${css}</style>
-${body.trim()}
+${bodyInlined.trim()}
 <script type="module">${js}</script>
 `;
 fs.mkdirSync(path.join(ROOT, 'dist'), { recursive: true });

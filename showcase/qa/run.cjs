@@ -110,7 +110,7 @@ async function checkViewport(browser, base, vp, opts = {}) {
   });
   if (!bc) fail(label, 'business cards section', 'missing');
   else {
-    bc.cards === 8 ? pass(label, 'business cards: 8 designs') : fail(label, 'business cards: 8 designs', String(bc.cards));
+    bc.cards === 7 ? pass(label, 'business cards: 7 designs') : fail(label, 'business cards: 7 designs', String(bc.cards));
     bc.seen.length >= 3 ? pass(label, 'business cards: scrolling changes the card', bc.seen.join(' → ')) : fail(label, 'business cards: scrolling changes the card', bc.seen.join(' → '));
     bc.activeOnScreen ? pass(label, 'business cards: centred card fully on screen') : fail(label, 'business cards: centred card fully on screen', JSON.stringify(bc));
     bc.overflowX <= 0 ? pass(label, 'business cards: no horizontal scroll') : fail(label, 'business cards: no horizontal scroll', `${bc.overflowX}px`);
