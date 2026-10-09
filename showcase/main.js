@@ -229,7 +229,9 @@ if (!world) {
   const dpr = () => window.devicePixelRatio || 1;
   const maxRatio = () => Math.max(1, Math.min(dpr(), 3, Math.sqrt(PIXEL_BUDGET / (W * H))));
   // Never drop below a crisp floor: at least 1×, and at least ~70% of the screen's own sharpness
-  const minRatio = () => Math.min(maxRatio(), Math.max(1, dpr() * 0.7));
+  // Phones/tablets (touch) may drop to half their native sharpness (still ~1.5x on an iPhone) to stay smooth on older devices
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const minRatio = () => Math.min(maxRatio(), Math.max(1, dpr() * (touch ? 0.5 : 0.7)));
   let ratio = maxRatio(), frameMs = 16, lastFrameAt = 0, lastAdjust = 0, slowWindows = 0, fastWindows = 0;
   const startedAt = performance.now();
   world.setPixelRatio(ratio);

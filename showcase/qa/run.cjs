@@ -22,6 +22,8 @@ const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudf
 const VIEWPORTS = [
   { name: 'phone-320', width: 320, height: 640, mobile: true },
   { name: 'phone-390', width: 390, height: 844, mobile: true },
+  { name: 'iphone-15-pro', width: 393, height: 852, mobile: true, dpr: 3, ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' },
+  { name: 'pixel-7', width: 412, height: 915, mobile: true, dpr: 2.625, ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36' },
   { name: 'phone-landscape', width: 844, height: 390, mobile: true },
   { name: 'tablet-768', width: 768, height: 1024, mobile: true },
   { name: 'laptop-1280', width: 1280, height: 720 },
@@ -34,7 +36,7 @@ const fail = (vp, check, detail) => results.push({ vp, check, ok: false, detail 
 const pass = (vp, check, detail = '') => results.push({ vp, check, ok: true, detail });
 
 async function checkViewport(browser, base, vp, opts = {}) {
-  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, isMobile: !!vp.mobile, hasTouch: !!vp.mobile, colorScheme: opts.dark ? 'dark' : 'light', reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
+  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.dpr || 1, userAgent: vp.ua, isMobile: !!vp.mobile, hasTouch: !!vp.mobile, colorScheme: opts.dark ? 'dark' : 'light', reducedMotion: opts.reduced ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
   const label = vp.name + (opts.dark ? ' (dark OS)' : '') + (opts.reduced ? ' (reduced motion)' : '');
   const errors = [];
@@ -64,6 +66,15 @@ async function checkViewport(browser, base, vp, opts = {}) {
     return { inView: c.top >= 0 && c.bottom <= innerHeight && c.left >= 0 && c.right <= innerWidth, hitsBrand: overlap(c, brand), hitsNav: overlap(c, nav) };
   });
   fit.inView && !fit.hitsBrand && !fit.hitsNav ? pass(label, 'card fits without collisions') : fail(label, 'card fits without collisions', JSON.stringify(fit));
+
+  // Touch screens: every control is at least 40×40 px to tap (Apple asks for 44; 40 allows for sub-pixel layout)
+  if (vp.mobile) {
+    const small = await p.evaluate(() => [...document.querySelectorAll('.pill, .chapters button, .cards-dots button, #menu-btn, .bc-face, .footer a')]
+      .filter((e) => e.offsetParent !== null)
+      .map((e) => { const r = e.getBoundingClientRect(); return { el: (e.className || e.id || e.tagName).toString().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; })
+      .filter((r) => r.w > 0 && (r.w < 40 || r.h < 40)));
+    small.length === 0 ? pass(label, 'tap targets ≥ 40px') : fail(label, 'tap targets ≥ 40px', JSON.stringify(small.slice(0, 4)));
+  }
 
   // Walk each chapter via the chapter buttons
   const chapters = await p.$$eval('#chapters button', (b) => b.length);
