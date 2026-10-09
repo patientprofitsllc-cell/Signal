@@ -149,7 +149,8 @@ async function checkViewport(browser, base, vp, opts = {}) {
 
   // Scroll to the end: world fades, content sections are reachable
   await p.evaluate(() => window.scrollTo(0, document.getElementById('welcome').offsetTop));
-  await p.waitForTimeout(1200);
+  // the software GPU here can stall for a second or more right after a long jump
+  await p.waitForFunction(() => +getComputedStyle(document.getElementById('world-fade')).opacity > 0.95, null, { timeout: 6000 }).catch(() => {});
   const end = await p.evaluate(() => ({
     fade: +getComputedStyle(document.getElementById('world-fade')).opacity,
     overflowX: document.documentElement.scrollWidth - innerWidth,

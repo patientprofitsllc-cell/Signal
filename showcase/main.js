@@ -122,7 +122,8 @@ document.addEventListener('click', (e) => {
     if (e.key === 'Escape') closeCard();
     if (e.key === 'Tab') { e.preventDefault(); lb.querySelector(e.shiftKey ? '#bc-lb-close' : '.bc-lb-text .pill').focus(); } // keep focus inside
   });
-  new IntersectionObserver(([e]) => { inView = e.isIntersecting; if (inView) kick(); }).observe(sec);
+  // A fast jump can deliver several entries at once; the last one is the current state
+  new IntersectionObserver((es) => { inView = es[es.length - 1].isIntersecting; if (inView) kick(); }).observe(sec);
   window.addEventListener('scroll', () => { if (inView) kick(); }, { passive: true });
   window.addEventListener('resize', kick);
   draw();
@@ -339,8 +340,8 @@ if (!world) {
   } else {
     const t0 = performance.now();
     let visible = true;
-    new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
+    new IntersectionObserver((es) => {
+      visible = es[es.length - 1].isIntersecting; // a fast jump can batch entries: the last is current
       // Scrolled past the 3D section (e.g. via a link): leave it in its finished, faded state
       if (!visible && window.scrollY > worldEl.offsetTop) { fadeEl.style.opacity = 1; card.style.opacity = 0; card.style.visibility = 'hidden'; }
     }).observe(worldEl);
