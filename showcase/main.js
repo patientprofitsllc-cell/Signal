@@ -67,12 +67,13 @@ document.addEventListener('click', (e) => {
     dotsEl.appendChild(b);
     return b;
   });
-  let cur = 0, last = -1, raf = 0, inView = false;
-  function draw() {
+  let cur = 0, last = -1, raf = 0, inView = false, lastT = 0;
+  function draw(now = performance.now()) {
     raf = 0;
     const p = Math.min(1, Math.max(0, (window.scrollY - sec.offsetTop) / span()));
     const target = toIndex(p);
-    cur = reduceMotion ? target : cur + (target - cur) * 0.2;
+    const dt = lastT ? Math.min(0.25, (now - lastT) / 1000) : 1 / 60; lastT = now;
+    cur = reduceMotion ? target : cur + (target - cur) * (1 - Math.exp(-12 * dt)); // frame-rate independent
     if (Math.abs(target - cur) < 0.001) cur = target;
     cards.forEach((c, i) => {
       const d = i - cur, ad = Math.abs(d);
@@ -90,7 +91,7 @@ document.addEventListener('click', (e) => {
       $('bc-desc').textContent = cards[idx].dataset.desc;
       dots.forEach((b, i) => { b.classList.toggle('active', i === idx); b.toggleAttribute('aria-current', i === idx); });
     }
-    if (inView && cur !== target) raf = requestAnimationFrame(draw);
+    if (inView && cur !== target) raf = requestAnimationFrame(draw); else lastT = 0;
   }
   const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
 
@@ -308,7 +309,10 @@ if (!world) {
       el.style.pointerEvents = 'auto';
       el.style.transform = `translate3d(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px, 0)`;
       // Keep the tooltip on screen: open it leftward near the right edge, downward near the top
-      el.classList.toggle('flip-x', s.x > W - 250);
+      // Keep the tooltip on screen: start it just right of the marker, slide it left if it would run off the edge
+      const tip = el.lastElementChild, tipW = tip.offsetWidth || 210;
+      const left = Math.min(s.x + 20, W - 10 - tipW);
+      tip.style.left = `${Math.round(Math.max(10, left) - s.x)}px`;
       el.classList.toggle('flip-y', s.y < 150);
     });
   }

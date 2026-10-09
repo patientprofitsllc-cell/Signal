@@ -95,6 +95,23 @@ async function checkViewport(browser, base, vp, opts = {}) {
     if (!opts.dark && !opts.reduced) await p.screenshot({ path: path.join(OUT, `${vp.name}-ch${i + 1}.png`) });
   }
 
+  // Hotspot tooltip opens on click and stays inside the viewport
+  const tip = await p.evaluate(async () => {
+    const h = [...document.querySelectorAll('.hs')].find((e) => +getComputedStyle(e).opacity > 0.5);
+    if (!h) return null;
+    h.querySelector('button').click();
+    await new Promise((r) => setTimeout(r, 400));
+    const r = h.querySelector('.tip').getBoundingClientRect();
+    const open = h.classList.contains('open') && h.querySelector('button').getAttribute('aria-expanded') === 'true';
+    return { open, left: r.left, right: r.right, top: r.top, bottom: r.bottom, vw: innerWidth, vh: innerHeight };
+  });
+  if (!tip) fail(label, 'tooltip', 'no hotspot to test');
+  else {
+    tip.open ? pass(label, 'tooltip opens (aria-expanded)') : fail(label, 'tooltip opens (aria-expanded)', JSON.stringify(tip));
+    tip.left >= 0 && tip.right <= tip.vw && tip.top >= 0 && tip.bottom <= tip.vh ? pass(label, 'tooltip inside viewport') : fail(label, 'tooltip inside viewport', JSON.stringify(tip));
+  }
+  await p.keyboard.press('Escape');
+
   // Business Cards: scrolling the section moves through the designs; the centred card is fully on screen
   const bc = await p.evaluate(async () => {
     const s = document.getElementById('business-cards');
@@ -118,23 +135,6 @@ async function checkViewport(browser, base, vp, opts = {}) {
   await p.evaluate(() => window.scrollTo(0, 0));
   await p.waitForTimeout(800);
 
-  // Hotspot tooltip opens on click and stays inside the viewport
-  const tip = await p.evaluate(async () => {
-    const h = [...document.querySelectorAll('.hs')].find((e) => +getComputedStyle(e).opacity > 0.5);
-    if (!h) return null;
-    h.querySelector('button').click();
-    await new Promise((r) => setTimeout(r, 400));
-    const r = h.querySelector('.tip').getBoundingClientRect();
-    const open = h.classList.contains('open') && h.querySelector('button').getAttribute('aria-expanded') === 'true';
-    return { open, left: r.left, right: r.right, top: r.top, bottom: r.bottom, vw: innerWidth, vh: innerHeight };
-  });
-  if (!tip) fail(label, 'tooltip', 'no hotspot to test');
-  else {
-    tip.open ? pass(label, 'tooltip opens (aria-expanded)') : fail(label, 'tooltip opens (aria-expanded)', JSON.stringify(tip));
-    tip.left >= 0 && tip.right <= tip.vw && tip.top >= 0 && tip.bottom <= tip.vh ? pass(label, 'tooltip inside viewport') : fail(label, 'tooltip inside viewport', JSON.stringify(tip));
-  }
-  await p.keyboard.press('Escape');
-
   // Scroll to the end: world fades, content sections are reachable
   await p.evaluate(() => window.scrollTo(0, document.getElementById('welcome').offsetTop));
   await p.waitForTimeout(1200);
@@ -148,7 +148,7 @@ async function checkViewport(browser, base, vp, opts = {}) {
   if (!opts.dark && !opts.reduced) await p.screenshot({ path: path.join(OUT, `${vp.name}-welcome.png`), fullPage: false });
 
   // Elements wider than the viewport anywhere in the content
-  const wide = await p.evaluate(() => [...document.querySelectorAll('main *, footer *')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.tagName + '.' + e.className).slice(0, 5));
+  const wide = await p.evaluate(() => [...document.querySelectorAll('main *, footer *')].filter((e) => !e.closest('.cards-stage') && e.getBoundingClientRect().right > innerWidth + 1).map((e) => e.tagName + '.' + e.className).slice(0, 5));
   wide.length === 0 ? pass(label, 'nothing spills past the right edge') : fail(label, 'nothing spills past the right edge', wide.join(', '));
 
   // Mobile menu
