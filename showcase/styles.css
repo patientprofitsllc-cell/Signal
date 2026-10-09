@@ -277,17 +277,45 @@ main h2 em { font-size: 1.08em; letter-spacing: -0.015em; }
 .final h2 { margin-bottom: 20px; }
 .final > p:not(.kicker) { color: var(--pc-mute); max-width: 48ch; margin: 0 auto 28px; }
 
+/* Reviews and FAQ (rendered by the site from its database and config) */
+.proof, .faq { background: var(--pc-bg); color: var(--pc-cream); }
+.proof .kicker, .faq .kicker { color: var(--pc-sand); }
+.proof em, .faq em { color: var(--pc-sand); }
+.quotes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; margin: 40px 0 0; padding: 0; list-style: none; }
+.quotes figure { margin: 0; height: 100%; padding: 26px; border-radius: 18px; background: var(--pc-raised); border: 1px solid rgba(236, 235, 228, 0.08); }
+.quotes .stars { margin: 0 0 12px; color: var(--pc-sand); letter-spacing: 0.12em; }
+.quotes .stars span { color: rgba(236, 235, 228, 0.2); }
+.quotes blockquote { margin: 0; font-size: 15px; line-height: 1.6; }
+.quotes figcaption { margin-top: 14px; font-size: 12px; color: var(--pc-mute); }
+.proof .note { margin: 22px 0 0; font-size: 12.5px; color: var(--pc-mute); }
+.faq { padding-top: 40px; }
+.faq-list { max-width: 780px; margin: 36px 0 0; display: grid; gap: 10px; }
+.faq details { border-radius: 14px; background: var(--pc-raised); border: 1px solid rgba(236, 235, 228, 0.08); }
+.faq summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 52px; padding: 12px 20px; cursor: pointer; list-style: none; font-size: 16px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; flex: none; color: var(--pc-sand); font-size: 22px; line-height: 1; transition: transform 0.2s; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { margin: 0; padding: 0 20px 18px; font-size: 14.5px; line-height: 1.6; color: var(--pc-mute); max-width: 68ch; }
+.faq .more { margin: 22px 0 0; font-size: 14px; }
+.faq .more a { display: inline-block; padding: 12px 0; color: var(--pc-sand); }
+
 .footer {
-  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  padding: 28px 6vw; background: var(--pc-bg); color: var(--pc-mute); font-size: 13px;
+  display: grid; gap: 28px;
+  padding: 44px 6vw 28px; background: var(--pc-bg); color: var(--pc-mute); font-size: 13px;
   border-top: 1px solid rgba(236, 235, 228, 0.08);
 }
-.footer nav { display: flex; gap: 18px; }
+.footer-contact p { margin: 0; color: var(--pc-cream); font-size: 15px; }
+.footer-contact a { color: var(--pc-sand); display: inline-block; padding: 10px 0; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 4px 22px; }
+.footer-links h2 { flex-basis: 100%; margin: 0 0 6px; font: 600 11.5px/1.4 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--pc-sand); }
+.footer-links a { display: inline-block; padding: 8px 0; }
+.footer-base { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 22px; border-top: 1px solid rgba(236, 235, 228, 0.08); }
+.footer nav { display: flex; gap: 18px; flex-wrap: wrap; }
 .footer a { text-decoration: none; }
 .footer a:hover { color: var(--pc-sand); }
 
 :focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
-.pricing :focus-visible, .process :focus-visible, .final :focus-visible, .footer :focus-visible { outline-color: var(--pc-sand); }
+.pricing :focus-visible, .process :focus-visible, .proof :focus-visible, .faq :focus-visible, .final :focus-visible, .footer :focus-visible { outline-color: var(--pc-sand); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 980px) {
