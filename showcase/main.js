@@ -53,7 +53,7 @@ document.addEventListener('click', (e) => {
 (function setupCards() {
   const sec = $('business-cards');
   if (!sec) return;
-  const cards = [...sec.querySelectorAll('.bcard')], n = cards.length;
+  const cards = [...sec.querySelectorAll('.bcard')], n = cards.length, faces = cards.map((c) => c.querySelector('.bc-face'));
   const dotsEl = $('cards-dots');
   const span = () => Math.max(1, sec.offsetHeight - window.innerHeight);
   // Map 6%–94% of the section onto the cards, so the first and last card hold for a moment
@@ -82,6 +82,11 @@ document.addEventListener('click', (e) => {
       c.style.zIndex = String(100 - Math.round(ad * 10));
       c.style.visibility = ad > 3.5 ? 'hidden' : 'visible';
       c.classList.toggle('active', ad < 0.5);
+      // Cards further out are thin slivers: too small to tap, so only the centre card and its neighbours take
+      // taps and focus (the dots reach every card)
+      const near = ad < 1.5;
+      c.style.pointerEvents = near ? '' : 'none';
+      faces[i].tabIndex = near ? 0 : -1;
     });
     const idx = Math.round(cur);
     if (idx !== last) {

@@ -384,13 +384,18 @@ main h2 em { font-size: 1.08em; letter-spacing: -0.015em; }
     translateZ(calc(var(--ad) * var(--pw) * -0.7))
     rotateY(calc(var(--d) * -30deg))
     rotateZ(calc(var(--d) * 1.2deg));
-  /* recede by dimming (cards stay opaque, so nothing ghosts through) + a soft shadow under the card */
-  filter: drop-shadow(0 34px 34px rgba(0, 0, 0, 0.55)) drop-shadow(0 8px 10px rgba(0, 0, 0, 0.35)) brightness(calc(1 - var(--ad) * 0.24));
-  will-change: transform, filter;
+  will-change: transform;
 }
+/* No CSS filters: a soft shadow under the card is painted once, and only the transform and the dimming
+   overlay's opacity change while scrolling, so phones never re-run a blur every frame */
 .bc-face {
   position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: pointer;
   border-radius: 5% / 3.8%; overflow: hidden; isolation: isolate; color: inherit; font: inherit;
+  box-shadow: 0 34px 34px rgba(0, 0, 0, 0.55), 0 8px 10px rgba(0, 0, 0, 0.35);
+}
+.bc-face::before { /* recede by dimming (cards stay opaque, so nothing ghosts through) */
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: #000;
+  opacity: calc(var(--ad) * 0.24); will-change: opacity;
 }
 .bc-face img { display: block; width: 100%; height: 100%; object-fit: fill; user-select: none; -webkit-user-drag: none; }
 .bc-face::after { /* light sweeping across the laminate as the card turns */
@@ -399,7 +404,7 @@ main h2 em { font-size: 1.08em; letter-spacing: -0.015em; }
   transform: translateX(calc(var(--d) * -36%)); mix-blend-mode: screen;
 }
 .bc-face:focus-visible { outline: 3px solid var(--pc-sand); outline-offset: 6px; }
-.bcard.active .bc-face { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.bcard.active .bc-face { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 34px 34px rgba(0, 0, 0, 0.55), 0 8px 10px rgba(0, 0, 0, 0.35); }
 
 /* Full-size view */
 .bc-lightbox { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(10, 10, 9, 0.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }

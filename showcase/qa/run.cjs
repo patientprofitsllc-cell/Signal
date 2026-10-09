@@ -70,7 +70,7 @@ async function checkViewport(browser, base, vp, opts = {}) {
   // Touch screens: every control is at least 40×40 px to tap (Apple asks for 44; 40 allows for sub-pixel layout)
   if (vp.mobile) {
     const small = await p.evaluate(() => [...document.querySelectorAll('.pill, .chapters button, .cards-dots button, #menu-btn, .bc-face, .footer a')]
-      .filter((e) => e.offsetParent !== null)
+      .filter((e) => e.offsetParent !== null && getComputedStyle(e).pointerEvents !== 'none')
       .map((e) => { const r = e.getBoundingClientRect(); return { el: (e.className || e.id || e.tagName).toString().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; })
       .filter((r) => r.w > 0 && (r.w < 40 || r.h < 40)));
     small.length === 0 ? pass(label, 'tap targets ≥ 40px') : fail(label, 'tap targets ≥ 40px', JSON.stringify(small.slice(0, 4)));
