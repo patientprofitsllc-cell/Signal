@@ -108,7 +108,8 @@ async function checkViewport(browser, base, vp, opts = {}) {
 
   // Hotspot tooltip opens on click and stays inside the viewport
   const tip = await p.evaluate(async () => {
-    const h = [...document.querySelectorAll('.hs')].find((e) => +getComputedStyle(e).opacity > 0.5);
+    // A hotspot still fading out is already hidden (visibility), so it isn't one a visitor can tap
+    const h = [...document.querySelectorAll('.hs')].find((e) => getComputedStyle(e).visibility === 'visible' && +getComputedStyle(e).opacity > 0.5);
     if (!h) return null;
     h.querySelector('button').click();
     await new Promise((r) => setTimeout(r, 400));
@@ -238,7 +239,9 @@ async function checkLinks() {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
     // One failing viewport is recorded and the run continues, so the report is always written
-    const guard = async (name, fn) => { try { await fn(); } catch (e) { fail(name, 'run completed', e.message.split('\n')[0]); } };
+    // QA_ONLY=<text> runs only the viewports whose name contains it (quick re-checks)
+    const only = process.env.QA_ONLY;
+    const guard = async (name, fn) => { if (only && !name.includes(only)) return; try { await fn(); } catch (e) { fail(name, 'run completed', e.message.split('\n')[0]); } };
     for (const vp of VIEWPORTS) await guard(vp.name, () => checkViewport(browser, base, vp));
     await guard('desktop-1440 (dark OS)', () => checkViewport(browser, base, VIEWPORTS[5], { dark: true }));
     await guard('phone-390 (reduced motion)', () => checkViewport(browser, base, VIEWPORTS[1], { reduced: true }));

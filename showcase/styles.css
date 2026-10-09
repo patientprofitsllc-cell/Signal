@@ -336,6 +336,7 @@ main h2 em { font-size: 1.08em; letter-spacing: -0.015em; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hs button::after, .scroll-hint i { animation: none; }
+  .hs { transition: none; }
 }
 
 /* Capture mode (used by the promo reel renderer) */
