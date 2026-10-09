@@ -258,7 +258,7 @@ main h2 em { font-size: 1.08em; letter-spacing: -0.015em; }
 }
 .bundle .tag { grid-column: 1 / -1; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pc-sand); font-weight: 600; }
 .bundle strong { font-weight: 500; font-size: 20px; color: var(--pc-cream); }
-.bundle span:not(.tag) { color: var(--pc-mute); font-size: 14px; min-width: 0; }
+.bundle span:not(.tag, [data-live]) { color: var(--pc-mute); font-size: 14px; min-width: 0; }
 .bundle i { font-style: normal; font-weight: 600; font-size: 13.5px; color: var(--pc-ink); background: var(--pc-sand); padding: 8px 14px; border-radius: 999px; white-space: nowrap; }
 .bundle:hover i { background: #e6c793; }
 @media (max-width: 980px) { .bundle { grid-template-columns: 1fr; } .bundle i { justify-self: start; } }

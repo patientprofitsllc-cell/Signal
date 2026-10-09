@@ -6,6 +6,7 @@
     "dev": "python3 -m http.server 8080",
     "reel": "node reel/render.cjs",
     "build:artifact": "node build-artifact.mjs",
+    "build:site": "node build-site.mjs",
     "qa": "node qa/run.cjs"
   },
   "devDependencies": {
