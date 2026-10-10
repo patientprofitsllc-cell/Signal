@@ -1,0 +1,20 @@
+/* scroll-kit base styles. Per-frame changes are transform and opacity only; shadows are painted once. */
+.sk-scene { position: relative; }
+.sk-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+
+.sk-track { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; perspective: 1200px;
+  --w: clamp(110px, 9vw, 160px); --gap: calc(var(--w) * 0.95); }
+.sk-item {
+  --d: 0; --ad: 0; --ar: 0.77;
+  position: absolute; width: var(--w); aspect-ratio: var(--ar);
+  left: calc(var(--w) / -2); top: calc(var(--w) / var(--ar) / -2);
+  transform: translateX(calc(var(--d) * var(--gap))) translateZ(calc(var(--ad) * var(--w) * -0.7)) rotateY(calc(var(--d) * -30deg));
+  will-change: transform;
+}
+.sk-item > * { position: relative; box-shadow: 0 30px 30px rgba(0, 0, 0, 0.5); }
+.sk-item > *::before { /* dim items away from the centre: an overlay's opacity, never a filter */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; background: #000; pointer-events: none;
+  opacity: calc(var(--ad) * 0.24); will-change: opacity;
+}
+@media (max-width: 640px) { .sk-track { --w: min(28vw, 140px); } }
+@media (prefers-reduced-motion: reduce) { .sk-item { transform: translateX(calc(var(--d) * var(--gap) * 1.25)); } }

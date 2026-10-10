@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>scroll-kit demo</title>
+<link rel="stylesheet" href="scroll-kit.css" />
+<style>
+  :root { color-scheme: dark; } body { margin: 0; background: #141412; color: #ecebe4; font: 16px/1.5 system-ui, sans-serif; }
+  .pad { min-height: 80vh; display: grid; place-items: center; }
+  .hero-word { font-size: clamp(40px, 9vw, 120px); transform: translateY(calc((1 - var(--p)) * 40vh)) scale(calc(0.7 + var(--p) * 0.3)); opacity: var(--p); }
+  .sk-item .face { width: 100%; height: 100%; border-radius: 12px; background: linear-gradient(160deg, #dbb77e, #87622b); display: grid; place-items: center; font-size: 28px; color: #141412; border: 0; }
+</style>
+</head>
+<body>
+  <div class="pad"><p>Scroll ↓</p></div>
+  <section class="sk-scene" id="hero" style="height: 250vh"><div class="sk-sticky" style="display:grid;place-items:center"><h1 class="hero-word">Smooth.</h1></div></section>
+  <section class="sk-scene" id="cards" style="height: 500vh"><div class="sk-sticky"><div class="sk-track">
+    <div class="sk-item"><button class="face">1</button></div><div class="sk-item"><button class="face">2</button></div>
+    <div class="sk-item"><button class="face">3</button></div><div class="sk-item"><button class="face">4</button></div>
+    <div class="sk-item"><button class="face">5</button></div>
+  </div><p id="cap" style="position:absolute;bottom:24px;width:100%;text-align:center">1 / 5</p></div></section>
+  <div class="pad"><p>End</p></div>
+  <script type="module">
+    import { scrollScene, scrollCarousel } from './scroll-kit.js';
+    const hero = document.getElementById('hero');
+    scrollScene(hero, ({ p }) => hero.style.setProperty('--p', p.toFixed(4)));
+    const cards = document.getElementById('cards');
+    scrollCarousel(cards, [...cards.querySelectorAll('.sk-item')], { onChange: (i) => { document.getElementById('cap').textContent = `${i + 1} / 5`; } });
+  </script>
+</body>
+</html>
